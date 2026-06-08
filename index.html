@@ -1523,6 +1523,23 @@ async function deleteCliente(){
   }catch(e){toast('Error: '+e.message,'err');}
 }
 
+// Aliases para nuevo cliente/producto
+function abrirMC(){
+  editCliId=null; newCliPhoto=null;
+  ['ec-nombre','ec-alias','ec-ruc','ec-tel','ec-email','ec-dir'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.value='';
+  });
+  const prev=document.getElementById('cli-foto-prev');
+  const icon=document.getElementById('cli-foto-icon');
+  if(prev) prev.style.display='none';
+  if(icon) icon.style.display='block';
+  const tit=document.getElementById('MEC-tit');
+  if(tit) tit.textContent='👤 Nuevo Cliente';
+  const modal=document.getElementById('MEC');
+  if(modal) modal.classList.add('open');
+}
+
 init();
 </script>
 </body>
