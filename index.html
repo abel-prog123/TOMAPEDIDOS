@@ -242,6 +242,18 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 .comp-info{flex:1;}
 .comp-name{font-size:.8rem;font-weight:800;color:var(--p);}
 .comp-sub{font-size:.68rem;color:var(--mu);}
+/* ESTADOS EXTRA */
+.eEN\ CAMINO{background:#fef3c7;color:#92400e;}
+.eENTREGADO{background:#d1fae5;color:#065f46;}
+.eANULADO{background:#fee2e2;color:#991b1b;text-decoration:line-through;}
+/* DESPACHO DASH */
+.desp-card{background:#fff;border-radius:12px;padding:12px 14px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.06);border-left:4px solid var(--p);}
+.desp-card.entregado{border-left-color:var(--a);opacity:.7;}
+.desp-card.anulado{border-left-color:var(--d);opacity:.6;}
+.desp-cli{font-size:.82rem;font-weight:800;}
+.desp-prods{font-size:.72rem;color:var(--mu);margin-top:3px;line-height:1.4;}
+.desp-meta{display:flex;justify-content:space-between;align-items:center;margin-top:6px;}
+.desp-fecha{font-size:.68rem;color:var(--mu);font-weight:600;}
 </style>
 </head>
 <body>
@@ -317,7 +329,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
         </select>
       </div>
       <div class="fg"><label>Vendedor</label>
-        <select id="sel-v"><option>MOISES</option><option>SONIA</option><option>CRISTIAN</option></select>
+        <select id="sel-v"><option>MOISES</option><option>SONIA</option><option>CRISTIAN</option><option>JHOSY</option></select>
       </div>
       <div class="fg"><label>Observaciones / Dirección</label><textarea id="txt-obs" placeholder="Dirección, referencias..."></textarea></div>
       <div class="fg"><label>Fecha estimada de pago</label><input type="date" id="inp-fep"></div>
@@ -397,8 +409,13 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 
 <!-- DASHBOARD -->
 <div class="screen" id="sc-dashboard">
-  <div class="scroll" id="dash-scroll">
+  <div class="tabs">
+    <div class="tab active" onclick="dashTab('resumen')" id="dtab-resumen">Resumen</div>
+    <div class="tab" onclick="dashTab('despachos')" id="dtab-despachos">Despachos</div>
+  </div>
+  <div class="scroll">
     <div id="dash-content"><div class="empty"><p>Cargando...</p></div></div>
+    <div id="dash-despachos" style="display:none"></div>
   </div>
 </div>
 
@@ -457,6 +474,12 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="fg"><label>Teléfono</label><input type="text" id="ec-tel" class="minp" style="width:100%"></div>
     <div class="fg"><label>Correo</label><input type="email" id="ec-email" class="minp" style="width:100%"></div>
     <div class="fg"><label>Dirección</label><textarea id="ec-dir" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;height:60px;resize:none;outline:none;"></textarea></div>
+    <div class="fg"><label>Ubicación (link Google Maps)</label>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="ec-ubicacion" placeholder="https://maps.google.com/..." class="minp" style="flex:1;">
+        <button onclick="getLocation()" style="padding:9px 12px;background:var(--p);color:#fff;border:none;border-radius:10px;font-size:.8rem;font-weight:800;cursor:pointer;white-space:nowrap;">📍 GPS</button>
+      </div>
+    </div>
     <div class="edit-actions">
       <button class="btn-edit" onclick="saveCliente()" id="btnEC">✓ GUARDAR</button>
       <button class="btn-del" onclick="deleteCliente()" id="btnDC">🗑</button>
@@ -1089,6 +1112,7 @@ async function abrirE(vid){
   document.getElementById('e-pago').value=v.forma_pago||'';
   document.getElementById('e-obs').value=v.observaciones||'';
   document.getElementById('e-fpt').value=v.fecha_pago_real||'';
+  document.getElementById('e-fentrega').value=v.fecha_entrega||'';
   document.getElementById('e-abm').value='';
   document.getElementById('e-abf').value=hoy();
 
@@ -1176,6 +1200,8 @@ async function saveEdit(){
     };
     const fpt=document.getElementById('e-fpt').value;
     if(fpt) upd.fecha_pago_real=fpt;
+    const fent=document.getElementById('e-fentrega').value;
+    if(fent) upd.fecha_entrega=fent;
     if(ab>=editTotal&&editTotal>0){upd.estado='COMPLETADO';if(!fpt)upd.fecha_pago_real=hoy();}
     await sbUpd('ventas',editId,upd);
 
@@ -1230,14 +1256,15 @@ function renderC(list){
   if(!list.length){el.innerHTML='<div class="empty"><p>No hay clientes</p></div>';return;}
   el.innerHTML=list.map(c=>{
     const ini=(c.nombres||c.alias||'?').charAt(0).toUpperCase();
-    const fotoEl=c.foto_url?`<img src="${c.foto_url}" style="width:100%;height:100%;object-fit:cover;border-radius:11px;">`:`<span style="font-size:1.1rem;font-weight:800;color:#fff">${ini}</span>`;
+    const fotoEl=c.foto_url?`<img src="${c.foto_url}" style="width:100%;height:100%;object-fit:cover;border-radius:11px;" onclick="event.stopPropagation();openLBUrl('${c.foto_url}')">`:`<span style="font-size:1.1rem;font-weight:800;color:#fff">${ini}</span>`;
     return`<div class="ccard">
-      <div class="cav" style="${c.foto_url?'background:var(--bdr);padding:0;overflow:hidden;':''}">${fotoEl}</div>
+      <div class="cav" style="${c.foto_url?'background:var(--bdr);padding:0;overflow:hidden;cursor:pointer;':''}">${fotoEl}</div>
       <div class="cinf">
         <div class="cnom">${c.nombres||c.alias||'(sin nombre)'}</div>
         ${c.alias&&c.alias!==c.nombres?`<div class="cali">${c.alias}</div>`:''}
         ${c.dni_ruc?`<div class="cruc">RUC/DNI: ${c.dni_ruc}</div>`:''}
         ${c.telefono?`<div class="cali">📞 ${c.telefono}</div>`:''}
+        ${c.ubicacion?`<a href="${c.ubicacion}" target="_blank" onclick="event.stopPropagation()" style="font-size:.68rem;color:var(--p);font-weight:700;text-decoration:none;">📍 Ver ubicación</a>`:''}
       </div>
       <button onclick="abrirEC('${c.id}')" style="background:var(--bg);border:1.5px solid var(--bdr);border-radius:10px;padding:6px 10px;font-size:.75rem;cursor:pointer;color:var(--mu);font-weight:800;flex-shrink:0;">✏️</button>
     </div>`;
@@ -1273,7 +1300,7 @@ async function guardarCli(){await saveCliente();}
 
 // ── DASHBOARD ─────────────────────────────────────────────
 async function renderDash(){
-  const el=document.getElementById('dash-content');
+  const el=document.getElementById('dash-resumen');
   el.innerHTML='<div class="empty"><p>Calculando...</p></div>';
   try{
     const now=new Date();
@@ -1453,6 +1480,7 @@ function abrirEC(id){
   document.getElementById('ec-tel').value=c.telefono||'';
   document.getElementById('ec-email').value=c.correo||'';
   document.getElementById('ec-dir').value=c.direccion||'';
+  document.getElementById('ec-ubicacion').value=c.ubicacion||'';
   const prev=document.getElementById('cli-foto-prev');
   const icon=document.getElementById('cli-foto-icon');
   if(c.foto_url){prev.src=c.foto_url;prev.style.display='block';icon.style.display='none';}
@@ -1492,6 +1520,7 @@ async function saveCliente(){
       telefono:document.getElementById('ec-tel').value.trim()||null,
       correo:document.getElementById('ec-email').value.trim()||null,
       direccion:document.getElementById('ec-dir').value.trim()||null,
+      ubicacion:document.getElementById('ec-ubicacion').value.trim()||null,
     };
     if(fotoUrl) data.foto_url=fotoUrl;
     if(editCliId){
@@ -1539,6 +1568,145 @@ function abrirMC(){
   const modal=document.getElementById('MEC');
   if(modal) modal.classList.add('open');
 }
+
+// ── GPS ───────────────────────────────────────────────────
+function getLocation(){
+  if(!navigator.geolocation){toast('GPS no disponible','err');return;}
+  toast('Obteniendo ubicación...','');
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const url=`https://maps.google.com/?q=${pos.coords.latitude},${pos.coords.longitude}`;
+    document.getElementById('ec-ubicacion').value=url;
+    toast('✅ Ubicación obtenida','ok');
+  },err=>{toast('Error GPS: '+err.message,'err');});
+}
+
+// ── DASHBOARD TABS ────────────────────────────────────────
+function dashTab(t){
+  ['resumen','despachos'].forEach(x=>{
+    document.getElementById('dash-'+x).style.display=x===t?'':'none';
+    document.getElementById('dtab-'+x).classList.toggle('active',x===t);
+  });
+  if(t==='despachos') renderDespachos();
+}
+
+// ── DESPACHOS DEL DÍA ────────────────────────────────────
+async function renderDespachos(){
+  const el=document.getElementById('dash-despachos');
+  el.innerHTML='<div class="empty"><p>Cargando...</p></div>';
+  try{
+    // Cargar detalles de ventas para mostrar productos
+    const hoy=new Date().toISOString().split('T')[0];
+    // Ventas activas (no anuladas, no completadas)
+    const activas=ventas.filter(v=>v.estado!=='ANULADO'&&v.estado!=='COMPLETADO');
+    if(!activas.length){el.innerHTML='<div class="empty"><p>No hay pedidos pendientes</p></div>';return;}
+
+    // Cargar detalles
+    const allDets=await sbGet('detalle_ventas');
+    
+    let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="font-size:.82rem;font-weight:800;color:var(--mu);">📦 ${activas.length} pedido${activas.length>1?'s':''} pendientes</div>
+      <button onclick="exportDespachos()" style="padding:6px 12px;background:var(--a);color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">📥 Exportar</button>
+    </div>`;
+
+    activas.forEach(v=>{
+      const c=clis.find(x=>x.id===v.cliente_id);
+      const nom=c?(c.nombres||c.alias||'?'):'Sin nombre';
+      const dir=c?c.direccion:'';
+      const ubi=c?c.ubicacion:'';
+      const dets=allDets.filter(d=>d.venta_id===v.id);
+      const est=v.estado||'ENVIADO';
+      const clsMap={'ENTREGADO':'entregado','ANULADO':'anulado'};
+      const cls=clsMap[est]||'';
+      const ab=getAb(v.id);
+      const pend=parseFloat(v.total||0)-ab;
+      
+      html+=`<div class="desp-card ${cls}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div class="desp-cli">${nom}</div>
+          <span class="ebadge e${est.replace(' ','\ ')}" style="font-size:.6rem;">${est}</span>
+        </div>
+        ${dir?`<div class="desp-prods">📍 ${dir}</div>`:''}
+        ${ubi?`<a href="${ubi}" target="_blank" style="font-size:.68rem;color:var(--p);font-weight:700;">🗺️ Ver mapa</a>`:''}
+        <div class="desp-prods">
+          ${dets.length?dets.map(d=>{
+            const pr=prods.find(p=>p.id===d.producto_id)||{nombre:d.producto_id};
+            return`• ${d.cantidad}x ${pr.nombre}`;
+          }).join('<br>'):'Sin detalle'}
+        </div>
+        <div class="desp-meta">
+          <span class="desp-fecha">📅 ${v.fecha_entrega||'Sin fecha'} · 💳 ${v.forma_pago||''}</span>
+          <span style="font-size:.75rem;font-weight:800;color:${pend>0?'var(--d)':'var(--a)'}">
+            ${pend>0?`Debe S/ ${pend.toFixed(0)}`:'✅ Pagado'}
+          </span>
+        </div>
+      </div>`;
+    });
+    el.innerHTML=html;
+  }catch(e){el.innerHTML=`<div class="empty"><p>Error: ${e.message}</p></div>`;}
+}
+
+// ── EXPORTAR DESPACHOS ────────────────────────────────────
+async function exportDespachos(){
+  const activas=ventas.filter(v=>v.estado!=='ANULADO'&&v.estado!=='COMPLETADO');
+  const allDets=await sbGet('detalle_ventas');
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+  const now=new Date();
+  const fecha=`${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getFullYear()}`;
+  
+  doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(14,117,168);
+  doc.text('FROSTECH - HOJA DE DESPACHOS',105,15,{align:'center'});
+  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(100,100,100);
+  doc.text('Fecha: '+fecha+' | Total pedidos: '+activas.length,105,22,{align:'center'});
+  doc.setDrawColor(14,117,168);doc.setLineWidth(.5);doc.line(10,26,200,26);
+  
+  let y=32;
+  activas.forEach((v,i)=>{
+    if(y>260){doc.addPage();y=15;}
+    const c=clis.find(x=>x.id===v.cliente_id);
+    const nom=c?(c.nombres||c.alias||'?'):'Sin nombre';
+    const dir=c?c.direccion||'':'-';
+    const tel=c?c.telefono||'':'-';
+    const dets=allDets.filter(d=>d.venta_id===v.id);
+    const ab=getAb(v.id);
+    const pend=parseFloat(v.total||0)-ab;
+    
+    // Fondo alternado
+    if(i%2===0){doc.setFillColor(248,250,252);doc.rect(10,y-2,190,22+(dets.length*5),'F');}
+    
+    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(14,117,168);
+    doc.text(`${i+1}. ${nom}`,12,y+3);
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(60,60,60);
+    doc.text(`📞 ${tel} | 📍 ${dir}`,12,y+8);
+    doc.text(`Entrega: ${v.fecha_entrega||'-'} | Pago: ${v.forma_pago||'-'}`,12,y+13);
+    
+    // Productos
+    const prodsStr=dets.map(d=>{const pr=prods.find(p=>p.id===d.producto_id)||{nombre:d.producto_id};return`${d.cantidad}x ${pr.nombre}`;}).join(', ');
+    const prodsLines=doc.splitTextToSize('Productos: '+prodsStr,140);
+    doc.text(prodsLines,12,y+18);
+    
+    // Monto
+    doc.setFont('helvetica','bold');
+    doc.setTextColor(pend>0?220:16,pend>0?50:185,pend>0?50:129);
+    doc.text(pend>0?`DEBE: S/ ${pend.toFixed(2)}`:'PAGADO',175,y+8,{align:'right'});
+    doc.text(`TOTAL: S/ ${parseFloat(v.total||0).toFixed(2)}`,175,y+13,{align:'right'});
+    
+    y+=26+(Math.max(0,prodsLines.length-1)*4);
+    doc.setDrawColor(220,220,220);doc.line(10,y,200,y);y+=4;
+  });
+  
+  doc.save('Despachos_Frostech_'+fecha.replace(/\//g,'-')+'.pdf');
+  toast('✅ PDF de despachos generado','ok');
+}
+
+// ── OVERRIDE renderDash PARA INCLUIR TABS ────────────────
+const _renderDashOld=renderDash;
+renderDash=async function(){
+  await _renderDashOld();
+  // Asegurarse que resumen esté visible
+  document.getElementById('dash-resumen').style.display='';
+  document.getElementById('dash-despachos').style.display='none';
+};
 
 init();
 </script>
