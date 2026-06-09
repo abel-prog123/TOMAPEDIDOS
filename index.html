@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0ea5e9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TomaPedidos">
+<link rel="manifest" href="manifest.json">
 <title>TomaPedidos · Frostech</title>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -701,6 +706,49 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
       Se abrirá WhatsApp con el mensaje y el link de la nota de venta.<br>
       Puedes editar el mensaje antes de enviar.
     </p>
+    <div style="height:8px"></div>
+  </div>
+</div>
+
+<!-- MODAL HISTORIAL CLIENTE -->
+<div class="mo" id="MHIST" onclick="if(event.target===this)this.classList.remove('open')" style="z-index:200;">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit">📊 Historial del Cliente</div>
+    <div class="msub" id="MHIST-sub"></div>
+    <!-- Métricas -->
+    <div class="dash-grid" style="margin-bottom:14px;" id="MHIST-metrics"></div>
+    <!-- Tabs -->
+    <div class="tabs" style="margin-bottom:12px;">
+      <div class="tab active" onclick="histTab('ventas')" id="htab-ventas">Compras</div>
+      <div class="tab" onclick="histTab('productos')" id="htab-productos">Productos</div>
+      <div class="tab" onclick="histTab('pagos')" id="htab-pagos">Pagos</div>
+    </div>
+    <div id="hist-ventas"></div>
+    <div id="hist-productos" style="display:none"></div>
+    <div id="hist-pagos" style="display:none"></div>
+    <div style="height:8px"></div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR DETALLE VENTA -->
+<div class="mo" id="MEDET" onclick="if(event.target===this)this.classList.remove('open')" style="z-index:200;">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit">✏️ Editar Precio</div>
+    <div class="msub" id="MEDET-sub"></div>
+    <input type="hidden" id="edet-id">
+    <div class="fg"><label>Precio final (S/)</label>
+      <input type="number" id="edet-precio" step="0.01" min="0" class="minp" style="width:100%">
+    </div>
+    <div class="fg"><label>Cantidad</label>
+      <input type="number" id="edet-qty" step="1" min="1" class="minp" style="width:100%">
+    </div>
+    <div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+      <div style="font-size:.75rem;font-weight:700;color:var(--mu);">Nuevo subtotal:</div>
+      <div id="edet-total" style="font-size:1.1rem;font-weight:900;color:var(--a);">S/ 0.00</div>
+    </div>
+    <button onclick="saveDetalle()" style="width:100%;padding:13px;background:var(--a);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.95rem;font-weight:800;cursor:pointer;">✓ GUARDAR</button>
     <div style="height:8px"></div>
   </div>
 </div>
@@ -1618,8 +1666,14 @@ async function abrirE(vid){
     if(!det.length){pEl.innerHTML='<p style="font-size:.75rem;color:var(--mu);text-align:center;padding:8px">Sin productos</p>';}
     else{
       pEl.innerHTML=det.map(d=>{
-        const pr=prods.find(p=>p.id===d.producto_id)||{nombre:d.producto_id};
-        return`<div class="sr"><span class="sl">${d.cantidad}x ${pr.nombre}</span><span class="sv">S/ ${parseFloat(d.total||0).toFixed(2)}</span></div>`;
+        const pr=prods.find(p=>p.id===d.producto_id)||{nombre:d.producto_id||'Producto'};
+        return`<div class="sr" style="cursor:pointer;" onclick="abrirEditDet('${d.id}','${(pr.nombre||'').replace(/'/g,"\\'")}',${d.precio_final||0},${d.cantidad||1})">
+          <span class="sl">${d.cantidad}x ${pr.nombre}</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="sv">S/ ${parseFloat(d.total||0).toFixed(2)}</span>
+            <span style="font-size:.65rem;color:var(--p);font-weight:800;">✏️</span>
+          </div>
+        </div>`;
       }).join('');
     }
   }catch(e){pEl.innerHTML='<p style="font-size:.75rem;color:var(--d)">Error cargando productos</p>';}
@@ -1751,7 +1805,10 @@ function renderC(list){
         ${c.telefono?`<div class="cali">📞 ${c.telefono}</div>`:''}
         ${c.ubicacion?`<a href="${c.ubicacion}" target="_blank" onclick="event.stopPropagation()" style="font-size:.68rem;color:var(--p);font-weight:700;text-decoration:none;">📍 Ver ubicación</a>`:''}
       </div>
-      <button onclick="abrirEC('${c.id}')" style="background:var(--bg);border:1.5px solid var(--bdr);border-radius:10px;padding:6px 10px;font-size:.75rem;cursor:pointer;color:var(--mu);font-weight:800;flex-shrink:0;">✏️</button>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button onclick="abrirHistorial('${c.id}')" style="background:#eff6ff;border:1.5px solid var(--p);border-radius:10px;padding:6px 10px;font-size:.75rem;cursor:pointer;color:var(--p);font-weight:800;">📊</button>
+        <button onclick="abrirEC('${c.id}')" style="background:var(--bg);border:1.5px solid var(--bdr);border-radius:10px;padding:6px 10px;font-size:.75rem;cursor:pointer;color:var(--mu);font-weight:800;">✏️</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -4539,6 +4596,332 @@ init=async function(){
 };
 
 // Arrancar con login
+// ═══════════════════════════════════════════════════════════
+// HISTORIAL DEL CLIENTE
+// ═══════════════════════════════════════════════════════════
+let histCliId=null;
+
+async function abrirHistorial(cliId){
+  const c=clis.find(x=>x.id===cliId); if(!c) return;
+  histCliId=cliId;
+  const nom=c.nombres||c.alias||'?';
+  document.getElementById('MHIST-sub').textContent=nom;
+
+  const vCli=ventas.filter(v=>v.cliente_id===cliId);
+  const totalCompras=vCli.reduce((s,v)=>s+parseFloat(v.total||0),0);
+  const totalPagado=vCli.reduce((s,v)=>s+getAb(v.id),0);
+  const pendiente=totalCompras-totalPagado;
+  const completadas=vCli.filter(v=>v.estado==='COMPLETADO').length;
+
+  document.getElementById('MHIST-metrics').innerHTML=`
+    <div class="dash-card"><div class="dash-icon">🧾</div>
+      <div class="dash-val">${vCli.length}</div>
+      <div class="dash-lbl">Compras</div></div>
+    <div class="dash-card"><div class="dash-icon">💰</div>
+      <div class="dash-val green">S/ ${totalCompras.toFixed(0)}</div>
+      <div class="dash-lbl">Total comprado</div></div>
+    <div class="dash-card"><div class="dash-icon">⏳</div>
+      <div class="dash-val ${pendiente>0?'red':'green'}">S/ ${pendiente.toFixed(0)}</div>
+      <div class="dash-lbl">Por cobrar</div></div>
+    <div class="dash-card"><div class="dash-icon">✅</div>
+      <div class="dash-val">${completadas}</div>
+      <div class="dash-lbl">Completadas</div></div>`;
+
+  histTab('ventas');
+  document.getElementById('MHIST').classList.add('open');
+}
+
+function histTab(t){
+  ['ventas','productos','pagos'].forEach(x=>{
+    const el=document.getElementById('hist-'+x);
+    const tab=document.getElementById('htab-'+x);
+    if(el) el.style.display=x===t?'':'none';
+    if(tab) tab.classList.toggle('active',x===t);
+  });
+  if(t==='ventas') renderHistVentas();
+  if(t==='productos') renderHistProductos();
+  if(t==='pagos') renderHistPagos();
+}
+
+function renderHistVentas(){
+  const el=document.getElementById('hist-ventas');
+  const vCli=ventas.filter(v=>v.cliente_id===histCliId);
+  if(!vCli.length){el.innerHTML='<div class="empty"><p>Sin compras registradas</p></div>';return;}
+  el.innerHTML=vCli.map(v=>{
+    const tot=parseFloat(v.total||0);
+    const ab=getAb(v.id);
+    const ps=ab>=tot?'pagado':ab>0?'parcial':'pendiente';
+    return`<div class="vrow" style="border-radius:10px;margin-bottom:6px;border:1.5px solid var(--bdr);" onclick="document.getElementById('MHIST').classList.remove('open');setTimeout(()=>abrirE('${v.id}'),300);">
+      <div class="vinfo">
+        <div class="vcli">${v.fecha||''} · ${v.vendedor||''}</div>
+        <div class="vsub"><span>${v.forma_pago||''}</span>${v.estado?`<span class="ebadge e${v.estado}">${v.estado}</span>`:''}</div>
+      </div>
+      <div class="vr">
+        <span class="vamt">S/ ${tot.toFixed(2)}</span>
+        <span class="pmini ${ps}">${ps==='pagado'?'PAGADO':ps==='parcial'?'S/'+ab.toFixed(0):'SIN PAGO'}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function renderHistProductos(){
+  const el=document.getElementById('hist-productos');
+  el.innerHTML='<div class="empty"><p>Cargando...</p></div>';
+  try{
+    const vCli=ventas.filter(v=>v.cliente_id===histCliId);
+    const allDets=await sbGet('detalle_ventas');
+    const dCli=allDets.filter(d=>vCli.find(v=>v.id===d.venta_id));
+    const prodMap={};
+    dCli.forEach(d=>{
+      const pr=prods.find(p=>p.id===d.producto_id)||{nombre:d.producto_id||'?'};
+      if(!prodMap[d.producto_id]) prodMap[d.producto_id]={nombre:pr.nombre,qty:0,total:0};
+      prodMap[d.producto_id].qty+=parseFloat(d.cantidad||0);
+      prodMap[d.producto_id].total+=parseFloat(d.total||0);
+    });
+    const sorted=Object.values(prodMap).sort((a,b)=>b.total-a.total);
+    if(!sorted.length){el.innerHTML='<div class="empty"><p>Sin productos</p></div>';return;}
+    el.innerHTML=sorted.map(p=>`
+      <div class="dash-list-item">
+        <div><div class="dash-list-name">${p.nombre}</div>
+          <div class="dash-list-sub">${p.qty} unidades compradas</div></div>
+        <div class="dash-list-val">S/ ${p.total.toFixed(2)}</div>
+      </div>`).join('');
+  }catch(e){el.innerHTML=`<div class="empty"><p>Error: ${e.message}</p></div>`;}
+}
+
+function renderHistPagos(){
+  const el=document.getElementById('hist-pagos');
+  const vCli=ventas.filter(v=>v.cliente_id===histCliId);
+  const abonosCli=abonos.filter(a=>vCli.find(v=>v.id===a.venta_id))
+    .sort((a,b)=>new Date(b.fecha||0)-new Date(a.fecha||0));
+  if(!abonosCli.length){el.innerHTML='<div class="empty"><p>Sin abonos registrados</p></div>';return;}
+  const totalAb=abonosCli.reduce((s,a)=>s+parseFloat(a.monto||0),0);
+  el.innerHTML=`<div style="background:#f0fdf4;border-radius:10px;padding:10px 12px;margin-bottom:10px;text-align:center;">
+    <div style="font-size:.75rem;color:#065f46;font-weight:700;">Total pagado</div>
+    <div style="font-size:1.3rem;font-weight:900;color:var(--a);">S/ ${totalAb.toFixed(2)}</div>
+  </div>`+
+  abonosCli.map(a=>{
+    const v=vCli.find(x=>x.id===a.venta_id);
+    return`<div class="abono-card">
+      <div class="abono-info">
+        <div class="abono-monto">S/ ${parseFloat(a.monto||0).toFixed(2)}</div>
+        <div class="abono-fecha">📅 ${a.fecha||''} ${v?'· Venta S/'+parseFloat(v.total||0).toFixed(0):''}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// EDITAR DETALLE DE VENTA
+// ═══════════════════════════════════════════════════════════
+function abrirEditDet(id,nombre,precio,qty){
+  document.getElementById('edet-id').value=id;
+  document.getElementById('MEDET-sub').textContent=nombre;
+  document.getElementById('edet-precio').value=parseFloat(precio).toFixed(2);
+  document.getElementById('edet-qty').value=qty;
+  uEdetTotal();
+  document.getElementById('MEDET').classList.add('open');
+}
+
+function uEdetTotal(){
+  var p=parseFloat(document.getElementById('edet-precio').value)||0;
+  var q=parseFloat(document.getElementById('edet-qty').value)||1;
+  document.getElementById('edet-total').textContent='S/ '+(p*q).toFixed(2);
+}
+
+document.addEventListener('DOMContentLoaded',function(){
+  var ep=document.getElementById('edet-precio');
+  var eq=document.getElementById('edet-qty');
+  if(ep) ep.oninput=uEdetTotal;
+  if(eq) eq.oninput=uEdetTotal;
+});
+
+async function saveDetalle(){
+  var id=document.getElementById('edet-id').value;
+  var precio=parseFloat(document.getElementById('edet-precio').value)||0;
+  var qty=parseFloat(document.getElementById('edet-qty').value)||1;
+  var total=precio*qty;
+  try{
+    await sb('detalle_ventas','PATCH',{precio_final:precio,cantidad:qty,total},'?id=eq.'+id);
+    // Actualizar total de la venta
+    // Recargar detalle y recalcular
+    toast('✓ Detalle actualizado','ok');
+    document.getElementById('MEDET').classList.remove('open');
+    // Recargar detalle en modal editar
+    if(editId) cargarDetalleVenta(editId,ventas.find(v=>v.id===editId));
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+
+// ═══════════════════════════════════════════════════════════
+// REPORTE MENSUAL IMPRIMIBLE
+// ═══════════════════════════════════════════════════════════
+async function generarReporteMensual(){
+  const now=new Date();
+  const mes=now.getMonth();
+  const anio=now.getFullYear();
+  const nomMes=MESES[mes]+' '+anio;
+
+  const vMes=ventas.filter(v=>{
+    const d=new Date(v.fecha||v.created_at||'');
+    return d.getMonth()===mes&&d.getFullYear()===anio;
+  });
+
+  const totalVentas=vMes.reduce((s,v)=>s+parseFloat(v.total||0),0);
+  const totalCobrado=vMes.reduce((s,v)=>s+getAb(v.id),0);
+  const pendiente=totalVentas-totalCobrado;
+  const completadas=vMes.filter(v=>v.estado==='COMPLETADO').length;
+  const anuladas=vMes.filter(v=>v.estado==='ANULADO').length;
+
+  // Por vendedor
+  const porVend={};
+  vMes.forEach(v=>{
+    const vn=v.vendedor||'Sin vendedor';
+    if(!porVend[vn]) porVend[vn]={ventas:0,total:0};
+    porVend[vn].ventas++;
+    porVend[vn].total+=parseFloat(v.total||0);
+  });
+
+  // Top clientes del mes
+  const porCli={};
+  vMes.forEach(v=>{
+    if(!porCli[v.cliente_id]) porCli[v.cliente_id]={total:0,ventas:0};
+    porCli[v.cliente_id].total+=parseFloat(v.total||0);
+    porCli[v.cliente_id].ventas++;
+  });
+  const topClis=Object.entries(porCli).sort((a,b)=>b[1].total-a[1].total).slice(0,5);
+
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+  const fecha=now.getDate().toString().padStart(2,'0')+'/'+(now.getMonth()+1).toString().padStart(2,'0')+'/'+now.getFullYear();
+
+  // Header
+  doc.setFont('helvetica','bold');doc.setFontSize(16);doc.setTextColor(14,117,168);
+  doc.text('FROSTECH',105,14,{align:'center'});
+  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(100,100,100);
+  doc.text('RUC: 20614298571 | 946 901 261 | asesoriasfrostech@gmail.com',105,20,{align:'center'});
+  doc.setDrawColor(14,117,168);doc.setLineWidth(1);doc.line(10,24,200,24);
+  doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(30,30,30);
+  doc.text('REPORTE MENSUAL DE VENTAS',105,32,{align:'center'});
+  doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(100,100,100);
+  doc.text(nomMes+' | Generado: '+fecha,105,39,{align:'center'});
+
+  // Métricas principales
+  doc.setFillColor(240,249,255);doc.roundedRect(10,44,190,28,2,2,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(14,117,168);
+  doc.text('RESUMEN DEL MES',14,51);
+  doc.setFontSize(9);doc.setTextColor(30,30,30);
+  doc.text('Total vendido: S/ '+totalVentas.toFixed(2),14,58);
+  doc.text('Total cobrado: S/ '+totalCobrado.toFixed(2),14,64);
+  doc.text('Por cobrar: S/ '+pendiente.toFixed(2),14,70);
+  doc.text('N° de ventas: '+vMes.length,110,58);
+  doc.text('Completadas: '+completadas,110,64);
+  doc.text('Anuladas: '+anuladas,110,70);
+
+  let y=80;
+
+  // Por vendedor
+  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(14,117,168);
+  doc.text('VENTAS POR VENDEDOR',14,y);y+=6;
+  doc.setFillColor(14,117,168);doc.rect(10,y,190,7,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(255,255,255);
+  doc.text('VENDEDOR',14,y+5);doc.text('N° VENTAS',100,y+5);doc.text('TOTAL S/',160,y+5);y+=8;
+  doc.setFont('helvetica','normal');doc.setTextColor(30,30,30);
+  var rb=false;
+  Object.entries(porVend).sort((a,b)=>b[1].total-a[1].total).forEach(([vn,d])=>{
+    if(rb){doc.setFillColor(248,250,252);doc.rect(10,y-1,190,7,'F');}
+    doc.text(vn,14,y+4);
+    doc.text(String(d.ventas),100,y+4);
+    doc.text('S/ '+d.total.toFixed(2),160,y+4);
+    y+=7;rb=!rb;
+  });
+  y+=4;
+
+  // Top clientes
+  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(14,117,168);
+  doc.text('TOP CLIENTES DEL MES',14,y);y+=6;
+  doc.setFillColor(14,117,168);doc.rect(10,y,190,7,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(255,255,255);
+  doc.text('CLIENTE',14,y+5);doc.text('COMPRAS',100,y+5);doc.text('TOTAL S/',160,y+5);y+=8;
+  doc.setFont('helvetica','normal');doc.setTextColor(30,30,30);rb=false;
+  topClis.forEach(([cid,d])=>{
+    const c=clis.find(x=>x.id===cid);
+    const nom=c?(c.nombres||c.alias||'?'):'?';
+    if(rb){doc.setFillColor(248,250,252);doc.rect(10,y-1,190,7,'F');}
+    doc.text(nom.substring(0,35),14,y+4);
+    doc.text(String(d.ventas),100,y+4);
+    doc.text('S/ '+d.total.toFixed(2),160,y+4);
+    y+=7;rb=!rb;
+  });
+  y+=4;
+
+  // Detalle de ventas del mes
+  if(y>200){doc.addPage();y=15;}
+  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(14,117,168);
+  doc.text('DETALLE DE VENTAS',14,y);y+=6;
+  doc.setFillColor(14,117,168);doc.rect(10,y,190,7,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(255,255,255);
+  doc.text('FECHA',12,y+5);doc.text('CLIENTE',35,y+5);doc.text('VENDEDOR',100,y+5);
+  doc.text('ESTADO',130,y+5);doc.text('TOTAL',160,y+5);doc.text('COBRADO',180,y+5);y+=8;
+  doc.setFont('helvetica','normal');doc.setTextColor(30,30,30);rb=false;
+  vMes.forEach(v=>{
+    if(y>275){doc.addPage();y=15;}
+    const c=clis.find(x=>x.id===v.cliente_id);
+    const nom=c?(c.nombres||c.alias||'?'):'?';
+    const ab=getAb(v.id);
+    if(rb){doc.setFillColor(248,250,252);doc.rect(10,y-1,190,7,'F');}
+    doc.setFontSize(7.5);
+    doc.text(v.fecha||'',12,y+4);
+    doc.text(nom.substring(0,22),35,y+4);
+    doc.text(v.vendedor||'',100,y+4);
+    doc.text(v.estado||'',130,y+4);
+    doc.text('S/'+parseFloat(v.total||0).toFixed(2),160,y+4);
+    doc.text('S/'+ab.toFixed(2),180,y+4);
+    y+=7;rb=!rb;
+  });
+
+  // Pie
+  const nPags=doc.getNumberOfPages();
+  for(var p=1;p<=nPags;p++){
+    doc.setPage(p);
+    doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(150,150,150);
+    doc.text('FROSTECH | Reporte confidencial | Pag. '+p+'/'+nPags,105,290,{align:'center'});
+  }
+
+  doc.save('Reporte_Frostech_'+nomMes.replace(/ /g,'_')+'.pdf');
+  toast('Reporte mensual generado','ok');
+}
+
+// Agregar botón reporte en dashboard resumen
+const _renderDashOld2=renderDash;
+renderDash=async function(){
+  await _renderDashOld2();
+  var el=document.getElementById('dash-resumen');
+  if(el){
+    var existente=el.querySelector('.btn-reporte-mensual');
+    if(!existente){
+      var btn=document.createElement('button');
+      btn.className='btn-reporte-mensual';
+      btn.textContent='📋 Reporte mensual PDF';
+      btn.style.cssText='width:100%;padding:12px;background:var(--p);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.85rem;font-weight:800;cursor:pointer;margin-bottom:8px;';
+      btn.onclick=generarReporteMensual;
+      el.insertBefore(btn,el.firstChild);
+    }
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// PWA - REGISTRO SERVICE WORKER
+// ═══════════════════════════════════════════════════════════
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      console.log('SW registrado');
+    }).catch(function(e){
+      console.log('SW error:',e);
+    });
+  });
+}
+
 initLogin();
 </script>
 </body>
