@@ -661,9 +661,20 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
       Ingredientes de materias primas para producir 1 unidad de este granel
     </div>
     <div id="receta-granel-list" style="margin-bottom:12px;"></div>
-    <div style="display:flex;gap:8px;margin-bottom:8px;">
-      <select id="recgl-mp" class="msel" style="flex:2"></select>
-      <input type="number" id="recgl-qty" placeholder="Cant." step="0.01" min="0" style="flex:1;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
+    <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+      <select id="recgl-mp" class="msel" style="flex:2;min-width:140px;"></select>
+      <input type="number" id="recgl-qty" placeholder="Cant." step="0.01" min="0"
+        style="flex:1;min-width:70px;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
+      <select id="recgl-unidad" class="msel" style="flex:1;min-width:80px;">
+        <option value="LT">Litros</option>
+        <option value="KG">Kg</option>
+        <option value="GL">Galones</option>
+        <option value="UND">Unid.</option>
+        <option value="ML">mL</option>
+        <option value="GR">Gramos</option>
+        <option value="KIT">Kit</option>
+        <option value="OTRO">Otro</option>
+      </select>
     </div>
     <button onclick="addRecetaGranelItem()" style="width:100%;padding:10px;background:var(--w);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.85rem;font-weight:800;cursor:pointer;margin-bottom:8px;">+ Agregar materia prima</button>
     <div style="height:8px"></div>
@@ -2817,6 +2828,12 @@ function abrirRecetaGranel(granelId, granelNombre){
   const sel=document.getElementById('recgl-mp');
   sel.innerHTML=materias.map(m=>`<option value="${m.id}">${m.nombre} (${m.unidad||'UND'})</option>`).join('');
   document.getElementById('recgl-qty').value='';
+  // Auto-seleccionar unidad de la primera materia prima
+  sel.onchange=function(){
+    const mp=materias.find(m=>m.id===sel.value);
+    if(mp&&mp.unidad) document.getElementById('recgl-unidad').value=mp.unidad;
+  };
+  if(materias.length){const mp=materias[0];if(mp&&mp.unidad)document.getElementById('recgl-unidad').value=mp.unidad;}
   renderRecetaGranelList(granelId);
   document.getElementById('MRGL').classList.add('open');
 }
@@ -2830,10 +2847,11 @@ function renderRecetaGranelList(granelId){
   }
   el.innerHTML=recs.map(r=>{
     const mp=materias.find(m=>m.id===r.materia_prima_id);
+    const unidad=r.unidad_receta||mp?.unidad||'UND';
     return`<div class="abono-card">
       <div class="abono-info">
         <div class="abono-monto">${mp?mp.nombre:'?'}</div>
-        <div class="abono-fecha">${r.cantidad} ${mp?mp.unidad||'UND':'UND'} por unidad de granel</div>
+        <div class="abono-fecha">${r.cantidad} ${unidad} por unidad de granel</div>
       </div>
       <button class="abdel" onclick="deleteRecetaGranelItem('${r.id}','${granelId}')">✕</button>
     </div>`;
@@ -2843,10 +2861,11 @@ function renderRecetaGranelList(granelId){
 async function addRecetaGranelItem(){
   const mpId=document.getElementById('recgl-mp').value;
   const qty=parseFloat(document.getElementById('recgl-qty').value);
+  const unidad=document.getElementById('recgl-unidad').value||'LT';
   if(!mpId){toast('Selecciona una materia prima','err');return;}
   if(!qty||qty<=0){toast('Ingresa una cantidad','err');return;}
   try{
-    const rec={id:gid(),granel_id:editRecetaGranelId,materia_prima_id:mpId,cantidad:qty};
+    const rec={id:gid(),granel_id:editRecetaGranelId,materia_prima_id:mpId,cantidad:qty,unidad_receta:unidad};
     await sbIns('recetas_granel',rec);
     recetasGranel.push(rec);
     renderRecetaGranelList(editRecetaGranelId);
@@ -3015,6 +3034,7 @@ function calcularProduccion(){
     const falta=necesario>disponible;
     if(falta) todosDisponibles=false;
     const pct=Math.min(100,(disponible/necesario)*100);
+    const unidadRec=r.unidad_receta||mp.unidad||'UND';
 
     html+=`<div style="background:${falta?'#fff8f8':'#f8fffe'};border:1.5px solid ${falta?'var(--d)':'var(--bdr)'};border-radius:10px;padding:10px 12px;margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -3026,15 +3046,15 @@ function calcularProduccion(){
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:.72rem;text-align:center;">
         <div style="background:#fff;border-radius:8px;padding:6px;">
           <div style="font-weight:800;color:var(--p)">${necesario.toFixed(2)}</div>
-          <div style="color:var(--mu)">Necesario</div>
+          <div style="color:var(--mu)">Necesario (${unidadRec})</div>
         </div>
         <div style="background:#fff;border-radius:8px;padding:6px;">
           <div style="font-weight:800;color:${falta?'var(--d)':'var(--a)'}">${disponible.toFixed(2)}</div>
-          <div style="color:var(--mu)">Disponible</div>
+          <div style="color:var(--mu)">Stock (${mp.unidad||'UND'})</div>
         </div>
         <div style="background:#fff;border-radius:8px;padding:6px;">
           <div style="font-weight:800;color:${falta?'var(--d)':'var(--mu)'}">${falta?(necesario-disponible).toFixed(2)+' falta':'OK'}</div>
-          <div style="color:var(--mu)">${mp.unidad||'UND'}</div>
+          <div style="color:var(--mu)">${unidadRec}</div>
         </div>
       </div>
       <div style="height:6px;background:var(--bdr);border-radius:6px;overflow:hidden;margin-top:8px;">
