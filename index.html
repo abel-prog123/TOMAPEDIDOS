@@ -267,6 +267,35 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 .com-summary-item{background:rgba(255,255,255,.15);border-radius:10px;padding:10px;}
 .com-summary-val{font-size:1.1rem;font-weight:900;}
 .com-summary-lbl{font-size:.65rem;opacity:.8;margin-top:2px;}
+/* STOCK */
+.stock-card{background:#fff;border-radius:14px;padding:12px 14px;margin-bottom:9px;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1.5px solid var(--bdr);display:flex;align-items:center;gap:12px;}
+.stock-card.alerta{border-color:var(--d);background:#fff8f8;}
+.stock-card.ok{border-color:var(--a);}
+.stock-info{flex:1;min-width:0;}
+.stock-nombre{font-size:.85rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stock-unidad{font-size:.68rem;color:var(--mu);font-weight:600;margin-top:2px;}
+.stock-nums{text-align:right;flex-shrink:0;}
+.stock-actual{font-size:1.1rem;font-weight:900;}
+.stock-actual.ok{color:var(--a);}
+.stock-actual.alerta{color:var(--d);}
+.stock-actual.warn{color:var(--w);}
+.stock-min{font-size:.68rem;color:var(--mu);font-weight:600;}
+.stock-actions{display:flex;gap:6px;margin-top:8px;}
+.stock-btn{padding:6px 12px;border-radius:8px;border:none;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;}
+.stock-btn.entrada{background:#d1fae5;color:#065f46;}
+.stock-btn.salida{background:#fee2e2;color:#991b1b;}
+.stock-btn.edit{background:var(--bg);color:var(--mu);border:1.5px solid var(--bdr);}
+.alerta-banner{background:#fee2e2;border:1.5px solid var(--d);border-radius:12px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;}
+.alerta-banner-txt{font-size:.8rem;font-weight:700;color:#991b1b;}
+.mov-card{background:#fff;border-radius:12px;padding:10px 14px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.06);display:flex;align-items:center;gap:10px;}
+.mov-tipo{padding:3px 10px;border-radius:8px;font-size:.68rem;font-weight:800;flex-shrink:0;}
+.mov-tipo.ENTRADA{background:#d1fae5;color:#065f46;}
+.mov-tipo.SALIDA{background:#fee2e2;color:#991b1b;}
+.mov-tipo.AJUSTE{background:#ede9fe;color:#6d28d9;}
+.mov-info{flex:1;min-width:0;}
+.mov-nombre{font-size:.8rem;font-weight:700;}
+.mov-meta{font-size:.68rem;color:var(--mu);margin-top:2px;}
+.mov-qty{font-size:.9rem;font-weight:800;flex-shrink:0;}
 /* DESPACHO DASH */
 .desp-card{background:#fff;border-radius:12px;padding:12px 14px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.06);border-left:4px solid var(--p);}
 .desp-card.entregado{border-left-color:var(--a);opacity:.7;}
@@ -428,6 +457,22 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
   </div>
 </div>
 
+<!-- STOCK -->
+<div class="screen" id="sc-stock">
+  <div class="tabs">
+    <div class="tab active" onclick="stockTab('productos')" id="stab-productos">Productos</div>
+    <div class="tab" onclick="stockTab('materias')" id="stab-materias">Mat. Primas</div>
+    <div class="tab" onclick="stockTab('recetas')" id="stab-recetas">Recetas</div>
+    <div class="tab" onclick="stockTab('movimientos')" id="stab-movimientos">Movimientos</div>
+  </div>
+  <div class="scroll" id="stock-scroll">
+    <div id="stock-productos"></div>
+    <div id="stock-materias" style="display:none"></div>
+    <div id="stock-recetas" style="display:none"></div>
+    <div id="stock-movimientos" style="display:none"></div>
+  </div>
+</div>
+
 <!-- DASHBOARD -->
 <div class="screen" id="sc-dashboard">
   <div class="tabs" style="overflow-x:auto;flex-wrap:nowrap;">
@@ -455,6 +500,9 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
   </button>
   <button class="ni" onclick="goS('dashboard')" id="ni-dashboard">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Dashboard
+  </button>
+  <button class="ni" onclick="goS('stock')" id="ni-stock">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>Stock
   </button>
 </div>
 
@@ -548,6 +596,68 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 </div>
 
 
+</div>
+
+<!-- MODAL MATERIA PRIMA -->
+<div class="mo" id="MMP" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit" id="MMP-tit">📦 Nueva Materia Prima</div>
+    <div class="fg"><label>Nombre *</label><input type="text" id="mp2-nombre" class="minp" style="width:100%"></div>
+    <div class="fg"><label>Unidad de medida</label>
+      <select id="mp2-unidad" class="msel">
+        <option value="UND">Unidades</option><option value="LT">Litros</option>
+        <option value="KG">Kilogramos</option><option value="GL">Galones</option>
+        <option value="BLD">Bidones</option><option value="CJ">Cajas</option>
+        <option value="KIT">Kit</option><option value="OTRO">Otro</option>
+      </select>
+    </div>
+    <div class="fg"><label>Stock actual</label><input type="number" id="mp2-stock" step="0.01" min="0" class="minp" style="width:100%" placeholder="0"></div>
+    <div class="fg"><label>Stock mínimo (alerta)</label><input type="number" id="mp2-minimo" step="0.01" min="0" class="minp" style="width:100%" placeholder="0"></div>
+    <div class="fg"><label>Costo unitario (S/)</label><input type="number" id="mp2-costo" step="0.01" min="0" class="minp" style="width:100%" placeholder="0.00"></div>
+    <div class="edit-actions">
+      <button class="btn-edit" onclick="saveMP2()" id="btnMMP">✓ GUARDAR</button>
+      <button class="btn-del" onclick="deleteMP2()" id="btnDMP" style="display:none">🗑</button>
+    </div>
+    <div style="height:8px"></div>
+  </div>
+</div>
+
+<!-- MODAL MOVIMIENTO STOCK -->
+<div class="mo" id="MMOV" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit" id="MMOV-tit">📥 Entrada de Stock</div>
+    <div class="msub" id="MMOV-sub"></div>
+    <div class="fg"><label>Tipo</label>
+      <select id="mov-tipo" class="msel">
+        <option value="ENTRADA">ENTRADA (compra/producción)</option>
+        <option value="SALIDA">SALIDA (uso/merma)</option>
+        <option value="AJUSTE">AJUSTE (corrección)</option>
+      </select>
+    </div>
+    <div class="fg"><label>Cantidad</label><input type="number" id="mov-qty" step="0.01" min="0" class="minp" style="width:100%" placeholder="0"></div>
+    <div class="fg"><label>Fecha</label><input type="date" id="mov-fecha" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;"></div>
+    <div class="fg"><label>Nota (opcional)</label><input type="text" id="mov-nota" class="minp" style="width:100%" placeholder="Ej: Compra proveedor X"></div>
+    <button class="mconf green" onclick="saveMov()" id="btnMOV">✓ REGISTRAR</button>
+    <div style="height:8px"></div>
+  </div>
+</div>
+
+<!-- MODAL RECETA -->
+<div class="mo" id="MREC" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit">📋 Receta del Producto</div>
+    <div class="msub" id="MREC-sub"></div>
+    <div id="receta-list" style="margin-bottom:12px;"></div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <select id="rec-mp" class="msel" style="flex:2"></select>
+      <input type="number" id="rec-qty" placeholder="Cant." step="0.01" min="0" style="flex:1;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
+    </div>
+    <button onclick="addRecetaItem()" style="width:100%;padding:10px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.85rem;font-weight:800;cursor:pointer;margin-bottom:8px;">+ Agregar ingrediente</button>
+    <div style="height:8px"></div>
+  </div>
 </div>
 
 <!-- MODAL EDITAR VENTA -->
@@ -654,6 +764,9 @@ async function uploadImg(file, path, b64, mimeType){
 
 // ── STATE ─────────────────────────────────────────────────
 let prods=[],clis=[],ventas=[],abonos=[],fPagos=[],fDesps=[];
+let materias=[],recetas=[],movimientos=[];
+let editMPId=null, movTarget=null, movTargetType=null;
+let editRecetaProdId=null;
 let carrito=[], mProd=null, mQty=1;
 let editId=null, editTotal=0;
 let fpN=[], fdN=[], feP=[], feD=[];
@@ -662,13 +775,16 @@ let eAbonos=[];
 // ── INIT ──────────────────────────────────────────────────
 async function init(){
   try{
-    [prods,clis,ventas,abonos,fPagos,fDesps]=await Promise.all([
+    [prods,clis,ventas,abonos,fPagos,fDesps,materias,recetas,movimientos]=await Promise.all([
       sbGet('productos','?order=nombre'),
       sbGet('clientes','?order=nombres'),
       sbGet('ventas','?order=created_at.desc'),
       sbGet('abonos'),
       sbGet('fotos_pagos'),
       sbGet('fotos_despachos'),
+      sbGet('materias_primas','?order=nombre'),
+      sbGet('recetas'),
+      sbGet('movimientos_stock','?order=created_at.desc&limit=100'),
     ]);
     renderP(prods); renderC(clis); renderV(ventas);
     popCSel();
@@ -683,13 +799,16 @@ async function init(){
 async function refresh(){
   toast('Actualizando...','');
   try{
-    [prods,clis,ventas,abonos,fPagos,fDesps]=await Promise.all([
+    [prods,clis,ventas,abonos,fPagos,fDesps,materias,recetas,movimientos]=await Promise.all([
       sbGet('productos','?order=nombre'),
       sbGet('clientes','?order=nombres'),
       sbGet('ventas','?order=created_at.desc'),
       sbGet('abonos'),
       sbGet('fotos_pagos'),
       sbGet('fotos_despachos'),
+      sbGet('materias_primas','?order=nombre'),
+      sbGet('recetas'),
+      sbGet('movimientos_stock','?order=created_at.desc&limit=100'),
     ]);
     filterP(); filterC(); filterV();
     popCSel();
@@ -2163,6 +2282,319 @@ async function exportComisionesPDF(){
 
     doc.save('Comisiones_Frostech_'+periodo.replace(/ /g,'_')+'_'+fecha.replace(/\//g,'-')+'.pdf');
     toast('PDF de comisiones generado','ok');
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+
+// ── STOCK ─────────────────────────────────────────────────
+function stockTab(t){
+  ['productos','materias','recetas','movimientos'].forEach(x=>{
+    const el=document.getElementById('stock-'+x);
+    const tab=document.getElementById('stab-'+x);
+    if(el) el.style.display=x===t?'':'none';
+    if(tab) tab.classList.toggle('active',x===t);
+  });
+  if(t==='productos') renderStockProds();
+  if(t==='materias') renderStockMaterias();
+  if(t==='recetas') renderStockRecetas();
+  if(t==='movimientos') renderMovimientos();
+}
+
+function getStockClase(actual,minimo){
+  if(actual<=0) return 'alerta';
+  if(actual<=minimo) return 'alerta';
+  if(actual<=minimo*1.5) return 'warn';
+  return 'ok';
+}
+
+// Productos con stock
+function renderStockProds(){
+  const el=document.getElementById('stock-productos');
+  // Alertas
+  const bajos=prods.filter(p=>parseFloat(p.stock_actual||0)<=parseFloat(p.stock_minimo||0)&&parseFloat(p.stock_minimo||0)>0);
+  let html='';
+  if(bajos.length){
+    html+=`<div class="alerta-banner"><span style="font-size:1.4rem">🚨</span><div class="alerta-banner-txt">${bajos.length} producto${bajos.length>1?'s':''} con stock bajo o agotado</div></div>`;
+  }
+  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+    <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Inventario de productos</span>
+  </div>`;
+  if(!prods.length){el.innerHTML='<div class="empty"><p>Sin productos</p></div>';return;}
+  html+=prods.map(p=>{
+    const act=parseFloat(p.stock_actual||0);
+    const min=parseFloat(p.stock_minimo||0);
+    const cls=getStockClase(act,min);
+    return`<div class="stock-card ${cls}">
+      <div class="stock-info">
+        <div class="stock-nombre">${p.nombre}</div>
+        <div class="stock-unidad">${p.unidad||'UND'} · Mín: ${min}</div>
+        <div class="stock-actions">
+          <button class="stock-btn entrada" onclick="abrirMov('prod','${p.id}','${p.nombre}','entrada')">+ Entrada</button>
+          <button class="stock-btn salida" onclick="abrirMov('prod','${p.id}','${p.nombre}','salida')">- Salida</button>
+          <button class="stock-btn edit" onclick="editStockProd('${p.id}')">⚙️ Config</button>
+        </div>
+      </div>
+      <div class="stock-nums">
+        <div class="stock-actual ${cls}">${act}</div>
+        <div class="stock-min">stock actual</div>
+      </div>
+    </div>`;
+  }).join('');
+  el.innerHTML=html;
+}
+
+// Materias primas
+function renderStockMaterias(){
+  const el=document.getElementById('stock-materias');
+  const bajos=materias.filter(m=>parseFloat(m.stock_actual||0)<=parseFloat(m.stock_minimo||0)&&parseFloat(m.stock_minimo||0)>0);
+  let html='';
+  if(bajos.length){
+    html+=`<div class="alerta-banner"><span style="font-size:1.4rem">🚨</span><div class="alerta-banner-txt">${bajos.length} materia${bajos.length>1?'s primas':' prima'} con stock bajo</div></div>`;
+  }
+  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+    <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Materias primas</span>
+    <button onclick="abrirNuevaMP()" style="display:flex;align-items:center;gap:5px;padding:6px 12px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">+ Nueva</button>
+  </div>`;
+  if(!materias.length){el.innerHTML=html+'<div class="empty"><p>No hay materias primas registradas</p></div>';return;}
+  html+=materias.map(m=>{
+    const act=parseFloat(m.stock_actual||0);
+    const min=parseFloat(m.stock_minimo||0);
+    const cls=getStockClase(act,min);
+    return`<div class="stock-card ${cls}">
+      <div class="stock-info">
+        <div class="stock-nombre">${m.nombre}</div>
+        <div class="stock-unidad">${m.unidad||'UND'} · Mín: ${min} · S/ ${parseFloat(m.costo_unitario||0).toFixed(2)}/u</div>
+        <div class="stock-actions">
+          <button class="stock-btn entrada" onclick="abrirMov('mp','${m.id}','${m.nombre}','entrada')">+ Entrada</button>
+          <button class="stock-btn salida" onclick="abrirMov('mp','${m.id}','${m.nombre}','salida')">- Salida</button>
+          <button class="stock-btn edit" onclick="editMP('${m.id}')">✏️ Editar</button>
+        </div>
+      </div>
+      <div class="stock-nums">
+        <div class="stock-actual ${cls}">${act}</div>
+        <div class="stock-min">stock actual</div>
+      </div>
+    </div>`;
+  }).join('');
+  el.innerHTML=html;
+}
+
+// Recetas
+function renderStockRecetas(){
+  const el=document.getElementById('stock-recetas');
+  let html=`<div style="margin-bottom:10px;font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Recetas por producto</div>`;
+  html+=prods.map(p=>{
+    const recs=recetas.filter(r=>r.producto_id===p.id);
+    return`<div class="stock-card" style="flex-direction:column;align-items:flex-start;">
+      <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+        <div class="stock-nombre">${p.nombre}</div>
+        <button onclick="abrirReceta('${p.id}','${p.nombre.replace(/'/g,"\'")}')" style="padding:5px 10px;background:var(--p);color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;">✏️ Editar</button>
+      </div>
+      ${recs.length?recs.map(r=>{
+        const mp=materias.find(m=>m.id===r.materia_prima_id);
+        return`<div style="font-size:.75rem;color:var(--mu);margin-top:4px;">• ${mp?mp.nombre:'?'}: ${r.cantidad} ${mp?mp.unidad||'':'UND'}</div>`;
+      }).join(''):`<div style="font-size:.75rem;color:var(--mu);margin-top:4px;font-style:italic;">Sin receta definida</div>`}
+    </div>`;
+  }).join('');
+  el.innerHTML=html;
+}
+
+// Movimientos
+function renderMovimientos(){
+  const el=document.getElementById('stock-movimientos');
+  if(!movimientos.length){el.innerHTML='<div class="empty"><p>Sin movimientos registrados</p></div>';return;}
+  el.innerHTML=movimientos.slice(0,50).map(m=>{
+    const prod=m.producto_id?prods.find(p=>p.id===m.producto_id):null;
+    const mp=m.materia_prima_id?materias.find(x=>x.id===m.materia_prima_id):null;
+    const nombre=prod?prod.nombre:mp?mp.nombre:'?';
+    const tipo=m.tipo||'ENTRADA';
+    return`<div class="mov-card">
+      <span class="mov-tipo ${tipo}">${tipo}</span>
+      <div class="mov-info">
+        <div class="mov-nombre">${nombre}</div>
+        <div class="mov-meta">${m.fecha||''} ${m.nota?'· '+m.nota:''} ${m.referencia?'· '+m.referencia:''}</div>
+      </div>
+      <div class="mov-qty" style="color:${tipo==='ENTRADA'?'var(--a)':'var(--d)'}">
+        ${tipo==='ENTRADA'?'+':'-'}${m.cantidad}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Editar stock mínimo y unidad de producto
+function editStockProd(id){
+  const p=prods.find(x=>x.id===id); if(!p) return;
+  const min=prompt(`Stock mínimo para "${p.nombre}" (actual: ${p.stock_minimo||0}):`,p.stock_minimo||0);
+  if(min===null) return;
+  sbUpd('productos',id,{stock_minimo:parseFloat(min)||0}).then(()=>{
+    const i=prods.findIndex(x=>x.id===id);
+    if(i>=0) prods[i].stock_minimo=parseFloat(min)||0;
+    renderStockProds();
+    toast('✓ Stock mínimo actualizado','ok');
+  }).catch(e=>toast('Error: '+e.message,'err'));
+}
+
+// Abrir movimiento
+function abrirMov(tipo, id, nombre, tipoMov){
+  movTarget=id;
+  movTargetType=tipo;
+  document.getElementById('MMOV-tit').textContent=tipoMov==='entrada'?'📥 Entrada de Stock':'📤 Salida de Stock';
+  document.getElementById('MMOV-sub').textContent=nombre;
+  document.getElementById('mov-tipo').value=tipoMov==='entrada'?'ENTRADA':'SALIDA';
+  document.getElementById('mov-qty').value='';
+  document.getElementById('mov-fecha').value=hoy();
+  document.getElementById('mov-nota').value='';
+  document.getElementById('MMOV').classList.add('open');
+}
+
+async function saveMov(){
+  const qty=parseFloat(document.getElementById('mov-qty').value);
+  if(!qty||qty<=0){toast('Ingresa una cantidad válida','err');return;}
+  const tipo=document.getElementById('mov-tipo').value;
+  const fecha=document.getElementById('mov-fecha').value;
+  const nota=document.getElementById('mov-nota').value;
+  const btn=document.getElementById('btnMOV');
+  btn.disabled=true;btn.textContent='⏳ Guardando...';
+  try{
+    const mov={id:gid(),tipo,cantidad:qty,fecha,nota:nota||null};
+    if(movTargetType==='prod') mov.producto_id=movTarget;
+    else mov.materia_prima_id=movTarget;
+    await sbIns('movimientos_stock',mov);
+
+    // Actualizar stock
+    const table=movTargetType==='prod'?'productos':'materias_primas';
+    const arr=movTargetType==='prod'?prods:materias;
+    const item=arr.find(x=>x.id===movTarget);
+    if(item){
+      const stockAnterior=parseFloat(item.stock_actual||0);
+      const nuevoStock=tipo==='ENTRADA'?stockAnterior+qty:Math.max(0,stockAnterior-qty);
+      await sbUpd(table,movTarget,{stock_actual:nuevoStock});
+      item.stock_actual=nuevoStock;
+    }
+    movimientos.unshift(mov);
+    document.getElementById('MMOV').classList.remove('open');
+    if(movTargetType==='prod') renderStockProds();
+    else renderStockMaterias();
+    toast('✓ Movimiento registrado','ok');
+  }catch(e){toast('Error: '+e.message,'err');}
+  finally{btn.disabled=false;btn.textContent='✓ REGISTRAR';}
+}
+
+// Nueva/Editar Materia Prima
+function abrirNuevaMP(){
+  editMPId=null;
+  ['mp2-nombre','mp2-stock','mp2-minimo','mp2-costo'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('mp2-unidad').value='UND';
+  document.getElementById('MMP-tit').textContent='📦 Nueva Materia Prima';
+  document.getElementById('btnDMP').style.display='none';
+  document.getElementById('MMP').classList.add('open');
+}
+
+function editMP(id){
+  const m=materias.find(x=>x.id===id); if(!m) return;
+  editMPId=id;
+  document.getElementById('mp2-nombre').value=m.nombre||'';
+  document.getElementById('mp2-unidad').value=m.unidad||'UND';
+  document.getElementById('mp2-stock').value=m.stock_actual||0;
+  document.getElementById('mp2-minimo').value=m.stock_minimo||0;
+  document.getElementById('mp2-costo').value=m.costo_unitario||0;
+  document.getElementById('MMP-tit').textContent='✏️ Editar Materia Prima';
+  document.getElementById('btnDMP').style.display='block';
+  document.getElementById('MMP').classList.add('open');
+}
+
+async function saveMP2(){
+  const nombre=document.getElementById('mp2-nombre').value.trim();
+  if(!nombre){toast('Ingresa el nombre','err');return;}
+  const btn=document.getElementById('btnMMP');
+  btn.disabled=true;btn.textContent='⏳ Guardando...';
+  try{
+    const data={
+      nombre,
+      unidad:document.getElementById('mp2-unidad').value,
+      stock_actual:parseFloat(document.getElementById('mp2-stock').value)||0,
+      stock_minimo:parseFloat(document.getElementById('mp2-minimo').value)||0,
+      costo_unitario:parseFloat(document.getElementById('mp2-costo').value)||0,
+    };
+    if(editMPId){
+      await sbUpd('materias_primas',editMPId,data);
+      const i=materias.findIndex(x=>x.id===editMPId);
+      if(i>=0) Object.assign(materias[i],data);
+    } else {
+      data.id=gid();
+      await sbIns('materias_primas',data);
+      materias.push(data);
+      materias.sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+    }
+    renderStockMaterias();
+    toast('✓ Materia prima guardada','ok');
+    document.getElementById('MMP').classList.remove('open');
+  }catch(e){toast('Error: '+e.message,'err');}
+  finally{btn.disabled=false;btn.textContent='✓ GUARDAR';}
+}
+
+async function deleteMP2(){
+  if(!editMPId) return;
+  if(!confirm('¿Eliminar esta materia prima?')) return;
+  try{
+    await sb('materias_primas','DELETE',null,'?id=eq.'+editMPId);
+    materias=materias.filter(x=>x.id!==editMPId);
+    renderStockMaterias();
+    toast('✓ Eliminada','ok');
+    document.getElementById('MMP').classList.remove('open');
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+
+// Recetas
+function abrirReceta(prodId, prodNombre){
+  editRecetaProdId=prodId;
+  document.getElementById('MREC-sub').textContent=prodNombre;
+  // Poblar select de materias primas
+  const sel=document.getElementById('rec-mp');
+  sel.innerHTML=materias.map(m=>`<option value="${m.id}">${m.nombre} (${m.unidad||'UND'})</option>`).join('');
+  document.getElementById('rec-qty').value='';
+  renderRecetaList(prodId);
+  document.getElementById('MREC').classList.add('open');
+}
+
+function renderRecetaList(prodId){
+  const el=document.getElementById('receta-list');
+  const recs=recetas.filter(r=>r.producto_id===prodId);
+  if(!recs.length){el.innerHTML='<p style="font-size:.78rem;color:var(--mu);text-align:center;padding:8px 0">Sin ingredientes aún</p>';return;}
+  el.innerHTML=recs.map((r,i)=>{
+    const mp=materias.find(m=>m.id===r.materia_prima_id);
+    return`<div class="abono-card">
+      <div class="abono-info">
+        <div class="abono-monto">${mp?mp.nombre:'?'}</div>
+        <div class="abono-fecha">${r.cantidad} ${mp?mp.unidad||'UND':'UND'}</div>
+      </div>
+      <button class="abdel" onclick="deleteRecetaItem('${r.id}','${prodId}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function addRecetaItem(){
+  const mpId=document.getElementById('rec-mp').value;
+  const qty=parseFloat(document.getElementById('rec-qty').value);
+  if(!mpId){toast('Selecciona una materia prima','err');return;}
+  if(!qty||qty<=0){toast('Ingresa una cantidad','err');return;}
+  try{
+    const rec={id:gid(),producto_id:editRecetaProdId,materia_prima_id:mpId,cantidad:qty};
+    await sbIns('recetas',rec);
+    recetas.push(rec);
+    renderRecetaList(editRecetaProdId);
+    renderStockRecetas();
+    document.getElementById('rec-qty').value='';
+    toast('✓ Ingrediente agregado','ok');
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+
+async function deleteRecetaItem(recId,prodId){
+  try{
+    await sb('recetas','DELETE',null,'?id=eq.'+recId);
+    recetas=recetas.filter(x=>x.id!==recId);
+    renderRecetaList(prodId);
+    renderStockRecetas();
+    toast('✓ Eliminado','ok');
   }catch(e){toast('Error: '+e.message,'err');}
 }
 
