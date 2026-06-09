@@ -613,6 +613,43 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 
 </div>
 
+<!-- MODAL WHATSAPP -->
+<div class="mo" id="MWA" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit">💬 Enviar por WhatsApp</div>
+    <div class="msub" id="WA-nombre"></div>
+    <input type="hidden" id="WA-vid">
+
+    <div class="fg">
+      <label>Número WhatsApp</label>
+      <div style="display:flex;gap:8px;">
+        <span style="padding:9px 11px;background:var(--bg);border:1.5px solid var(--bdr);border-radius:10px;font-size:.85rem;font-weight:700;color:var(--mu);flex-shrink:0;">+51</span>
+        <input type="tel" id="WA-tel" placeholder="9XXXXXXXX" class="minp" style="flex:1;">
+      </div>
+    </div>
+
+    <div class="fg">
+      <label>Mensaje</label>
+      <textarea id="WA-msg" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.78rem;height:200px;resize:none;outline:none;line-height:1.5;"></textarea>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <button onclick="confirmarWA()" style="flex:2;padding:13px;background:#25D366;color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.95rem;font-weight:800;cursor:pointer;">
+        💬 Abrir WhatsApp
+      </button>
+      <button onclick="descargarPDFventa(document.getElementById('WA-vid').value)" style="flex:1;padding:13px;background:var(--p);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.88rem;font-weight:800;cursor:pointer;">
+        📄 Ver PDF
+      </button>
+    </div>
+    <p style="font-size:.7rem;color:var(--mu);text-align:center;line-height:1.4;">
+      Se abrirá WhatsApp con el mensaje y el link de la nota de venta.<br>
+      Puedes editar el mensaje antes de enviar.
+    </p>
+    <div style="height:8px"></div>
+  </div>
+</div>
+
 <!-- MODAL KARDEX -->
 <div class="mo" id="MKARDEX" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal">
@@ -913,7 +950,10 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="sdiv">📄 Documento PDF generado</div>
     <div id="e-doc"></div>
 
-    <button class="mconf green" onclick="saveEdit()" id="btnE" style="margin-top:12px">✓ GUARDAR CAMBIOS</button>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="mconf green" onclick="saveEdit()" id="btnE" style="flex:2;margin-top:0;">✓ GUARDAR CAMBIOS</button>
+      <button onclick="enviarWhatsAppConDetalle(editId)" style="flex:1;padding:13px;background:#25D366;color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.88rem;font-weight:800;cursor:pointer;margin-top:0;">💬 WA</button>
+    </div>
     <div style="height:8px"></div>
   </div>
 </div>
@@ -3772,6 +3812,189 @@ saveMov=async function(){
   }
   await _saveMovOld();
 };
+
+// ── WHATSAPP ──────────────────────────────────────────────
+function enviarWhatsApp(ventaId){
+  const v=ventas.find(x=>x.id===ventaId);
+  if(!v){toast('Venta no encontrada','err');return;}
+  const c=clis.find(x=>x.id===v.cliente_id);
+  const telCliente=c?limpiarTel(c.telefono||''):'';
+
+  // Construir mensaje
+  const fecha=v.fecha||hoy();
+  const total=parseFloat(v.total||0).toFixed(2);
+  const ab=getAb(ventaId);
+  const pend=(parseFloat(v.total||0)-ab).toFixed(2);
+  const nomCliente=c?(c.nombres||c.alias||'Cliente'):'Cliente';
+
+  // Obtener detalle de productos
+  const detsLocal=[];
+  // Intentar desde detalle_ventas cargado
+  // Construir mensaje base
+  let msg=`Hola ${nomCliente}! 👋
+
+`;
+  msg+=`*FROSTECH - Detalle de Pedido*
+`;
+  msg+=`━━━━━━━━━━━━━━━━━━━━
+`;
+  msg+=`📅 Fecha: ${fecha}
+`;
+  msg+=`💳 Pago: ${v.forma_pago||'-'}
+`;
+  if(v.comprobante) msg+=`🧾 Comprobante: ${v.comprobante}
+`;
+  msg+=`━━━━━━━━━━━━━━━━━━━━
+`;
+  msg+=`💰 *Total: S/ ${total}*
+`;
+  if(ab>0) msg+=`✅ Abonado: S/ ${ab.toFixed(2)}
+`;
+  if(parseFloat(pend)>0) msg+=`⏳ Pendiente: S/ ${pend}
+`;
+  if(v.fecha_entrega) msg+=`🚚 Entrega: ${v.fecha_entrega}
+`;
+  if(v.observaciones) msg+=`📝 ${v.observaciones}
+`;
+  msg+=`━━━━━━━━━━━━━━━━━━━━
+`;
+  msg+=`━━━━━━━━━━━━━━━━━━━━
+`;
+  if(v.documento_url){
+    msg+=`📄 *Nota de venta:*
+${v.documento_url}
+`;
+    msg+=`━━━━━━━━━━━━━━━━━━━━
+`;
+  }
+  msg+=`_Gracias por su preferencia_ 🙏
+`;
+  msg+=`FROSTECH | 946 901 261`;
+
+  // Mostrar modal de WhatsApp
+  document.getElementById('WA-msg').value=msg;
+  document.getElementById('WA-tel').value=telCliente;
+  document.getElementById('WA-vid').value=ventaId;
+  document.getElementById('WA-nombre').textContent=nomCliente;
+  document.getElementById('MWA').classList.add('open');
+}
+
+async function enviarWhatsAppConDetalle(ventaId){
+  // Cargar detalle de productos para el mensaje
+  const v=ventas.find(x=>x.id===ventaId);
+  if(!v) return;
+  const c=clis.find(x=>x.id===v.cliente_id);
+  const nomCliente=c?(c.nombres||c.alias||'Cliente'):'Cliente';
+  const total=parseFloat(v.total||0).toFixed(2);
+  const ab=getAb(ventaId);
+  const pend=(parseFloat(v.total||0)-ab).toFixed(2);
+
+  let msg=`Hola ${nomCliente}! 👋
+
+`;
+  msg+=`*FROSTECH - Detalle de Pedido*
+`;
+  msg+=`━━━━━━━━━━━━━━━━━━━━
+`;
+  msg+=`📅 Fecha: ${v.fecha||hoy()}
+`;
+  msg+=`💳 Pago: ${v.forma_pago||'-'}
+`;
+  if(v.comprobante) msg+=`🧾 Comprobante: ${v.comprobante}
+`;
+  msg+=`━━━━━━━━━━━━━━━━━━━━
+`;
+  msg+=`*PRODUCTOS:*
+`;
+
+  try{
+    const dets=await sbGet('detalle_ventas','?venta_id=eq.'+ventaId);
+    dets.forEach(d=>{
+      const pr=prods.find(p=>p.id===d.producto_id)||{nombre:d.producto_id};
+      msg+=`• ${d.cantidad}x ${pr.nombre} - S/ ${parseFloat(d.precio_final||0).toFixed(2)} c/u
+`;
+    });
+  }catch(e){}
+
+  msg+=`━━━━━━━━━━━━━━━━━━━━
+`;
+  msg+=`💰 *Total: S/ ${total}*
+`;
+  if(ab>0) msg+=`✅ Abonado: S/ ${ab.toFixed(2)}
+`;
+  if(parseFloat(pend)>0) msg+=`⏳ Saldo pendiente: S/ ${pend}
+`;
+  if(v.fecha_entrega) msg+=`🚚 Fecha de entrega: ${v.fecha_entrega}
+`;
+  if(v.observaciones) msg+=`📝 Obs: ${v.observaciones}
+`;
+  msg+=`━━━━━━━━━━━━━━━━━━━━
+`;
+  // Agregar link del PDF si existe
+  if(v.documento_url){
+    msg+=`📄 *Nota de venta:*
+${v.documento_url}
+`;
+    msg+=`━━━━━━━━━━━━━━━━━━━━
+`;
+  }
+  msg+=`_Gracias por su preferencia_ 🙏
+`;
+  msg+=`FROSTECH | 946 901 261 | asesoriasfrostech@gmail.com`;
+
+  const telCliente=c?limpiarTel(c.telefono||''):'';
+  document.getElementById('WA-msg').value=msg;
+  document.getElementById('WA-tel').value=telCliente;
+  document.getElementById('WA-vid').value=ventaId;
+  document.getElementById('WA-nombre').textContent=nomCliente;
+  document.getElementById('MWA').classList.add('open');
+}
+
+function limpiarTel(tel){
+  // Limpiar número para WhatsApp (solo dígitos, agregar 51 si es peruano)
+  var t=tel.replace(/\D/g,'');
+  if(t.length===9&&t.startsWith('9')) t='51'+t;
+  else if(t.length===11&&t.startsWith('051')) t='51'+t.substring(3);
+  return t;
+}
+
+function confirmarWA(){
+  var tel=document.getElementById('WA-tel').value.replace(/\D/g,'');
+  var msg=document.getElementById('WA-msg').value;
+  var vid=document.getElementById('WA-vid').value;
+
+  if(!tel){toast('Ingresa un número de WhatsApp','err');return;}
+  if(tel.length===9&&tel.startsWith('9')) tel='51'+tel;
+
+  // Generar y descargar PDF primero
+  var v=ventas.find(x=>x.id===vid);
+  if(v){
+    var c=clis.find(x=>x.id===v.cliente_id);
+    var nomC=c?(c.nombres||c.alias||'Cliente'):'Cliente';
+    var rucC=c?c.dni_ruc||'':'';
+    var now=new Date(v.fecha||hoy());
+    var fecha=now.getDate().toString().padStart(2,'0')+'/'+(now.getMonth()+1).toString().padStart(2,'0')+'/'+now.getFullYear();
+    // Guardar carrito temporal para PDF
+    var carritoTemp=carrito.slice();
+    // No podemos regenerar el PDF exacto sin el carrito original
+    // Pero sí podemos abrir WhatsApp con el mensaje
+  }
+
+  var url='https://wa.me/'+tel+'?text='+encodeURIComponent(msg);
+  window.open(url,'_blank');
+  document.getElementById('MWA').classList.remove('open');
+  toast('Abriendo WhatsApp...','ok');
+}
+
+function descargarPDFventa(ventaId){
+  // Descargar PDF desde Drive si existe
+  var v=ventas.find(x=>x.id===ventaId);
+  if(v&&v.documento_url){
+    window.open(v.documento_url,'_blank');
+  } else {
+    toast('Esta venta no tiene PDF guardado','err');
+  }
+}
 
 init();
 </script>
