@@ -292,6 +292,16 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 .mov-tipo.ENTRADA{background:#d1fae5;color:#065f46;}
 .mov-tipo.SALIDA{background:#fee2e2;color:#991b1b;}
 .mov-tipo.AJUSTE{background:#ede9fe;color:#6d28d9;}
+.mov-tipo.MERMA{background:#fef3c7;color:#92400e;}
+.kardex-row{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--bdr);font-size:.75rem;}
+.kardex-row:last-child{border-bottom:none;}
+.kardex-fecha{color:var(--mu);font-weight:600;width:70px;flex-shrink:0;}
+.kardex-tipo{width:70px;flex-shrink:0;}
+.kardex-cant{width:55px;text-align:right;flex-shrink:0;font-weight:800;}
+.kardex-cant.entrada{color:var(--a);}
+.kardex-cant.salida{color:var(--d);}
+.kardex-saldo{width:60px;text-align:right;flex-shrink:0;font-weight:900;color:var(--p);}
+.kardex-nota{flex:1;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .mov-info{flex:1;min-width:0;}
 .mov-nombre{font-size:.8rem;font-weight:700;}
 .mov-meta{font-size:.68rem;color:var(--mu);margin-top:2px;}
@@ -603,6 +613,27 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 
 </div>
 
+<!-- MODAL KARDEX -->
+<div class="mo" id="MKARDEX" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit">📋 Kardex</div>
+    <div class="msub" id="MKARDEX-sub"></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button onclick="exportKardex()" style="flex:1;padding:9px;background:#217346;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.78rem;font-weight:800;cursor:pointer;">📊 Exportar Excel</button>
+    </div>
+    <!-- Cabecera -->
+    <div style="display:flex;gap:8px;padding:6px 12px;background:var(--p);border-radius:8px;margin-bottom:4px;">
+      <span style="color:#fff;font-size:.68rem;font-weight:800;width:70px;">FECHA</span>
+      <span style="color:#fff;font-size:.68rem;font-weight:800;width:70px;">TIPO</span>
+      <span style="color:#fff;font-size:.68rem;font-weight:800;width:55px;text-align:right;">CANT.</span>
+      <span style="color:#fff;font-size:.68rem;font-weight:800;width:60px;text-align:right;">SALDO</span>
+      <span style="color:#fff;font-size:.68rem;font-weight:800;flex:1;">NOTA</span>
+    </div>
+    <div id="kardex-list" style="max-height:60vh;overflow-y:auto;background:#fff;border-radius:8px;"></div>
+  </div>
+</div>
+
 <!-- MODAL CALCULADOR PRODUCTO TERMINADO -->
 <div class="mo" id="MCALCP" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal">
@@ -773,11 +804,24 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="mtit" id="MMOV-tit">📥 Entrada de Stock</div>
     <div class="msub" id="MMOV-sub"></div>
     <div class="fg"><label>Tipo</label>
-      <select id="mov-tipo" class="msel">
+      <select id="mov-tipo" class="msel" onchange="toggleMermaMotivo()">
         <option value="ENTRADA">ENTRADA (compra/producción)</option>
-        <option value="SALIDA">SALIDA (uso/merma)</option>
-        <option value="AJUSTE">AJUSTE (corrección)</option>
+        <option value="SALIDA">SALIDA (uso/producción)</option>
+        <option value="MERMA">MERMA (pérdida/evaporación/derrame)</option>
+        <option value="AJUSTE">AJUSTE (corrección de inventario)</option>
       </select>
+    </div>
+    <div id="merma-motivo-box" style="display:none">
+      <div class="fg"><label>Motivo de la merma</label>
+        <select id="merma-motivo" class="msel">
+          <option value="EVAPORACION">Evaporación</option>
+          <option value="DERRAME">Derrame / Accidente</option>
+          <option value="VENCIMIENTO">Vencimiento</option>
+          <option value="CONTAMINACION">Contaminación</option>
+          <option value="ERROR_PROCESO">Error de proceso</option>
+          <option value="OTRO">Otro</option>
+        </select>
+      </div>
     </div>
     <div class="fg"><label>Cantidad</label><input type="number" id="mov-qty" step="0.01" min="0" class="minp" style="width:100%" placeholder="0"></div>
     <div class="fg"><label>Fecha</label><input type="date" id="mov-fecha" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;"></div>
@@ -2541,6 +2585,7 @@ function renderStockMaterias(){
         <div class="stock-actions">
           <button class="stock-btn entrada" onclick="abrirMov('mp','${m.id}','${m.nombre}','entrada')">+ Entrada</button>
           <button class="stock-btn salida" onclick="abrirMov('mp','${m.id}','${m.nombre}','salida')">- Salida</button>
+          <button onclick="abrirKardex('mp','${m.id}','${m.nombre.replace(/'/g,"\\'")}','${m.unidad||'UND'}')" style="background:#ede9fe;color:#6d28d9;border:none;border-radius:8px;padding:5px 10px;font-family:inherit;font-size:.72rem;font-weight:800;cursor:pointer;">📋 Kardex</button>
           <button class="stock-btn edit" onclick="editMP('${m.id}')">✏️ Editar</button>
         </div>
       </div>
@@ -3599,6 +3644,134 @@ function exportValorizacion(){
   URL.revokeObjectURL(url);
   toast('Valorización exportada','ok');
 }
+
+// ── MERMA: mostrar/ocultar motivo ────────────────────────
+function toggleMermaMotivo(){
+  var tipo=document.getElementById('mov-tipo').value;
+  document.getElementById('merma-motivo-box').style.display=tipo==='MERMA'?'':'none';
+}
+
+// ── KARDEX ───────────────────────────────────────────────
+var kardexTarget=null;
+var kardexNombre='';
+var kardexUnidad='';
+var kardexTipo='';
+
+function abrirKardex(tipo,id,nombre,unidad){
+  kardexTarget=id;
+  kardexNombre=nombre;
+  kardexUnidad=unidad;
+  kardexTipo=tipo;
+  document.getElementById('MKARDEX-sub').textContent=nombre+' ('+unidad+')';
+  renderKardex(tipo,id,unidad);
+  document.getElementById('MKARDEX').classList.add('open');
+}
+
+function renderKardex(tipo,id,unidad){
+  const el=document.getElementById('kardex-list');
+  // Filtrar movimientos del item
+  var movs=movimientos.filter(function(m){
+    if(tipo==='prod') return m.producto_id===id;
+    if(tipo==='granel'||tipo==='mp') return m.materia_prima_id===id;
+    return false;
+  }).sort(function(a,b){
+    return new Date(a.fecha||a.created_at||0)-new Date(b.fecha||b.created_at||0);
+  });
+
+  if(!movs.length){
+    el.innerHTML='<div class="empty"><p>Sin movimientos registrados</p></div>';
+    return;
+  }
+
+  // Stock inicial asumido como 0 + entradas - salidas
+  var saldo=0;
+  var html='';
+  movs.forEach(function(m){
+    var esEntrada=m.tipo==='ENTRADA';
+    var qty=parseFloat(m.cantidad||0);
+    if(esEntrada) saldo+=qty;
+    else saldo=Math.max(0,saldo-qty);
+    var tipoColor={
+      'ENTRADA':'ok','SALIDA':'salida','MERMA':'warn','AJUSTE':'parcial','PRODUCCION':'ok'
+    }[m.tipo]||'';
+    html+=`<div class="kardex-row">
+      <span class="kardex-fecha">${m.fecha||''}</span>
+      <span class="kardex-tipo"><span class="mov-tipo ${m.tipo}" style="font-size:.6rem;">${m.tipo}</span></span>
+      <span class="kardex-cant ${esEntrada?'entrada':'salida'}">${esEntrada?'+':'-'}${qty}</span>
+      <span class="kardex-saldo">${saldo.toFixed(2)}</span>
+      <span class="kardex-nota">${m.nota||m.referencia||''}</span>
+    </div>`;
+  });
+  el.innerHTML=html;
+}
+
+function exportKardex(){
+  var NL=String.fromCharCode(10);
+  function toCSV(rows){
+    return rows.map(function(r){
+      return r.map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}).join(',');
+    }).join(NL);
+  }
+  var movs=movimientos.filter(function(m){
+    if(kardexTipo==='prod') return m.producto_id===kardexTarget;
+    return m.materia_prima_id===kardexTarget;
+  }).sort(function(a,b){
+    return new Date(a.fecha||0)-new Date(b.fecha||0);
+  });
+  var saldo=0;
+  var rows=[['FECHA','TIPO','REFERENCIA','ENTRADA','SALIDA','SALDO','NOTA']];
+  movs.forEach(function(m){
+    var qty=parseFloat(m.cantidad||0);
+    var esEntrada=m.tipo==='ENTRADA';
+    if(esEntrada) saldo+=qty; else saldo=Math.max(0,saldo-qty);
+    rows.push([
+      m.fecha||'', m.tipo, m.referencia||'',
+      esEntrada?qty:'', esEntrada?'':qty,
+      saldo.toFixed(2), m.nota||''
+    ]);
+  });
+  var bom='﻿';
+  var blob=new Blob([bom+toCSV(rows)],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;
+  a.download='Kardex_'+kardexNombre.replace(/[^a-zA-Z0-9]/g,'_')+'_'+new Date().toISOString().split('T')[0]+'.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Kardex exportado','ok');
+}
+
+// ── HISTORIAL PRECIOS MAT. PRIMA ─────────────────────────
+// Guardar precio anterior al actualizar materia prima
+const _saveMP2Old=saveMP2;
+saveMP2=async function(){
+  // Registrar cambio de precio si cambia
+  var mp=editMPId?materias.find(function(m){return m.id===editMPId;}):null;
+  var nuevoCosto=parseFloat(document.getElementById('mp2-costo').value)||0;
+  if(mp&&Math.abs(parseFloat(mp.costo_unitario||0)-nuevoCosto)>0.001){
+    // Registrar en movimientos como nota de precio
+    await sbIns('movimientos_stock',{
+      id:gid(),tipo:'AJUSTE',referencia:'PRECIO',
+      materia_prima_id:editMPId,cantidad:0,
+      nota:'Precio actualizado: S/ '+parseFloat(mp.costo_unitario||0).toFixed(4)+' → S/ '+nuevoCosto.toFixed(4),
+      fecha:hoy()
+    }).catch(function(){});
+  }
+  await _saveMP2Old();
+};
+
+// ── ACTUALIZAR saveMov PARA INCLUIR MERMA ────────────────
+const _saveMovOld=saveMov;
+saveMov=async function(){
+  // Agregar motivo de merma a la nota si aplica
+  var tipo=document.getElementById('mov-tipo').value;
+  if(tipo==='MERMA'){
+    var motivo=document.getElementById('merma-motivo').value;
+    var notaEl=document.getElementById('mov-nota');
+    if(notaEl&&!notaEl.value) notaEl.value='Merma por: '+motivo;
+  }
+  await _saveMovOld();
+};
 
 init();
 </script>
