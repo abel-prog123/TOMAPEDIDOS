@@ -514,6 +514,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="mh"></div>
     <div class="mtit">➕ Agregar al pedido</div>
     <div class="mpn" id="MApn"></div>
+    <div id="MA-stock" style="margin-bottom:10px;font-size:.78rem;font-weight:700;text-align:center;"></div>
     <div class="mrow"><span class="mlab">Cantidad</span>
       <div class="qbig"><button onclick="mq(-1)">−</button><span id="MAq">1</span><button onclick="mq(1)">+</button></div>
     </div>
@@ -598,6 +599,30 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 </div>
 
 
+</div>
+
+<!-- MODAL CALCULADOR PRODUCTO TERMINADO -->
+<div class="mo" id="MCALCP" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit">🏭 Producir Producto</div>
+    <div class="msub" id="MCALCP-sub"></div>
+    <div style="background:#eff6ff;border-radius:12px;padding:12px 14px;margin-bottom:14px;">
+      <div style="font-size:.72rem;font-weight:800;color:var(--p);text-transform:uppercase;margin-bottom:8px;">¿Cuánto quieres producir?</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="number" id="calcp-qty" placeholder="Cantidad" step="0.01" min="0"
+          style="flex:1;padding:10px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:1rem;font-weight:800;outline:none;"
+          oninput="calcularProduccionProd()">
+        <span id="calcp-unidad" style="font-size:.85rem;font-weight:800;color:var(--mu);flex-shrink:0;"></span>
+      </div>
+    </div>
+    <div id="calcp-resultado"></div>
+    <button onclick="confirmarProduccionProd()" id="btnCALCP"
+      style="width:100%;padding:13px;background:var(--a);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.95rem;font-weight:800;cursor:pointer;margin-top:4px;display:none;">
+      ✅ Confirmar y descontar stock
+    </button>
+    <div style="height:8px"></div>
+  </div>
 </div>
 
 <!-- MODAL CALCULADOR DE PRODUCCIÓN -->
@@ -1070,6 +1095,7 @@ function renderP(list){
         <div class="pname">${p.nombre}</div>
         <div class="pprice">S/ ${parseFloat(p.precio||0).toFixed(2)}</div>
       </div>
+      <button onclick="abrirCalcProd('${p.id}')" style="background:var(--a);color:#fff;border:none;border-radius:8px;padding:5px 8px;font-size:.72rem;cursor:pointer;font-weight:800;margin-right:4px;">🏭</button>
       <button onclick="abrirEP('${p.id}')" style="background:var(--bg);border:1.5px solid var(--bdr);border-radius:8px;padding:5px 8px;font-size:.72rem;cursor:pointer;color:var(--mu);margin-right:4px;">✏️</button>
       <button class="padd" onclick="openMA('${p.id}')">+</button>
     </div>`).join('');
@@ -1084,6 +1110,13 @@ function openMA(id){
   document.getElementById('MAq').textContent='1';
   document.getElementById('MAp').value=parseFloat(mProd.precio||0).toFixed(2);
   uMT();
+  // Mostrar stock disponible
+  const stockEl=document.getElementById('MA-stock');
+  const stockAct=parseFloat(mProd.stock_actual||0);
+  const stockMin=parseFloat(mProd.stock_minimo||0);
+  if(stockAct<=0) stockEl.innerHTML='<span style="color:var(--d)">🚨 AGOTADO — stock: 0</span>';
+  else if(stockAct<=stockMin) stockEl.innerHTML=`<span style="color:var(--d)">⚠️ Stock bajo: ${stockAct} ${mProd.unidad||'UND'}</span>`;
+  else stockEl.innerHTML=`<span style="color:var(--a)">✅ Stock disponible: ${stockAct} ${mProd.unidad||'UND'}</span>`;
   document.getElementById('MA').classList.add('open');
 }
 function cMA(e){if(e.target===document.getElementById('MA'))document.getElementById('MA').classList.remove('open');}
@@ -1092,11 +1125,17 @@ function uMT(){const p=parseFloat(document.getElementById('MAp').value)||0;docum
 function confA(){
   const precio=parseFloat(document.getElementById('MAp').value);
   if(!precio||precio<=0){toast('Ingresa un precio válido','err');return;}
+  const totalQty=mQty+(carrito.find(x=>x.id===mProd.id)?.qty||0);
+  const stockStatus=checkStockProducto(mProd.id,totalQty);
   const i=carrito.findIndex(x=>x.id===mProd.id);
   if(i>=0){carrito[i].qty+=mQty;carrito[i].precio=precio;}
   else carrito.push({id:mProd.id,nombre:mProd.nombre,precioBase:parseFloat(mProd.precio||0),precio,qty:mQty,comision:parseFloat(mProd.comision||0)});
   document.getElementById('MA').classList.remove('open');
-  renderD(); uDC(); toast('✓ Producto agregado','ok');
+  renderD(); uDC();
+  if(stockStatus==='agotado') toast('⚠️ Sin stock — producto agotado','err');
+  else if(stockStatus==='insuficiente') toast('⚠️ Stock insuficiente para esta cantidad','err');
+  else if(stockStatus==='bajo') toast('⚠️ Stock bajo — quedan pocas unidades','err');
+  else toast('✓ Producto agregado','ok');
 }
 
 // ── DETALLE ───────────────────────────────────────────────
@@ -1467,8 +1506,13 @@ async function saveEdit(){
     if(fpt) upd.fecha_pago_real=fpt;
     const fent=document.getElementById('e-fentrega').value;
     if(fent) upd.fecha_entrega=fent;
+    const estadoAnterior=ventas.find(function(v){return v.id===editId;})?.estado||'';
     if(ab>=editTotal&&editTotal>0){upd.estado='COMPLETADO';if(!fpt)upd.fecha_pago_real=hoy();}
     await sbUpd('ventas',editId,upd);
+    // Descontar stock si cambia a ENTREGADO
+    if(upd.estado==='ENTREGADO'&&estadoAnterior!=='ENTREGADO'){
+      await descontarStockVenta(editId);
+    }
 
     // Abonos nuevos
     for(const a of eAbonos) if(a.isNew&&!a._del) await sbIns('abonos',{id:a.id,venta_id:a.venta_id,monto:a.monto,fecha:a.fecha});
@@ -3160,6 +3204,211 @@ async function confirmarProduccion(){
     renderStockMaterias();
   }catch(e){toast('Error: '+e.message,'err');}
   finally{btn.disabled=false;btn.textContent='✅ Confirmar producción y descontar stock';}
+}
+
+// ── 1. DESCUENTO AUTOMÁTICO AL CAMBIAR ESTADO A ENTREGADO ──
+async function descontarStockVenta(ventaId){
+  try{
+    const allDets = await sbGet('detalle_ventas','?venta_id=eq.'+ventaId);
+    for(var i=0;i<allDets.length;i++){
+      var d=allDets[i];
+      var pr=prods.find(function(p){return p.id===d.producto_id;});
+      if(!pr) continue;
+      var qty=parseFloat(d.cantidad||0);
+      var nuevoStock=Math.max(0,parseFloat(pr.stock_actual||0)-qty);
+      await sbUpd('productos',d.producto_id,{stock_actual:nuevoStock});
+      pr.stock_actual=nuevoStock;
+      await sbIns('movimientos_stock',{
+        id:gid(),tipo:'SALIDA',referencia:'VENTA',
+        producto_id:d.producto_id,cantidad:qty,
+        nota:'Venta '+ventaId,fecha:hoy()
+      });
+    }
+    toast('Stock descontado automáticamente','ok');
+  }catch(e){console.error('Error descontando stock:',e);}
+}
+
+// ── 2. COSTO DEL PRODUCTO CALCULADO DESDE RECETA ──
+function calcularCostoProducto(prodId){
+  var recs=recetas.filter(function(r){return r.producto_id===prodId;});
+  var costo=0;
+  recs.forEach(function(r){
+    if(r.granel_id){
+      // Costo del granel × cantidad
+      var g=graneles.find(function(x){return x.id===r.granel_id;});
+      if(g) costo+=parseFloat(g.costo_unitario||0)*parseFloat(r.cantidad||0);
+    } else if(r.materia_prima_id){
+      // Costo de materia prima × cantidad
+      var mp=materias.find(function(m){return m.id===r.materia_prima_id;});
+      if(mp) costo+=parseFloat(mp.costo_unitario||0)*parseFloat(r.cantidad||0);
+    }
+  });
+  return costo;
+}
+
+async function actualizarCostosProductos(){
+  // Recalcular costo de todos los productos desde receta
+  for(var i=0;i<prods.length;i++){
+    var p=prods[i];
+    var recs=recetas.filter(function(r){return r.producto_id===p.id;});
+    if(!recs.length) continue;
+    var costo=calcularCostoProducto(p.id);
+    if(Math.abs(costo-(parseFloat(p.costo||0)))>0.001){
+      await sbUpd('productos',p.id,{costo:costo});
+      p.costo=costo;
+    }
+  }
+}
+
+// ── 3. ALERTA EN PEDIDO SI NO HAY STOCK ──
+function checkStockProducto(prodId, qty){
+  var pr=prods.find(function(p){return p.id===prodId;});
+  if(!pr) return null;
+  var stock=parseFloat(pr.stock_actual||0);
+  if(stock<=0) return 'agotado';
+  if(stock<qty) return 'insuficiente';
+  if(stock<parseFloat(pr.stock_minimo||0)) return 'bajo';
+  return 'ok';
+}
+
+// ── 4. PRODUCCIÓN DESDE PRODUCTO TERMINADO ──
+let calcProdId=null;
+
+function abrirCalcProd(prodId){
+  var p=prods.find(function(x){return x.id===prodId;}); if(!p) return;
+  var recs=recetas.filter(function(r){return r.producto_id===prodId;});
+  if(!recs.length){
+    toast('Primero define la receta del producto','err');
+    return;
+  }
+  calcProdId=prodId;
+  document.getElementById('MCALCP-sub').textContent=p.nombre;
+  document.getElementById('calcp-unidad').textContent=p.unidad||'UND';
+  document.getElementById('calcp-qty').value='';
+  document.getElementById('calcp-resultado').innerHTML=`
+    <div style="background:var(--bg);border-radius:10px;padding:12px;font-size:.8rem;color:var(--mu);text-align:center;">
+      Ingresa la cantidad a producir
+    </div>`;
+  document.getElementById('btnCALCP').style.display='none';
+  document.getElementById('MCALCP').classList.add('open');
+}
+
+function calcularProduccionProd(){
+  var qty=parseFloat(document.getElementById('calcp-qty').value)||0;
+  var el=document.getElementById('calcp-resultado');
+  var btn=document.getElementById('btnCALCP');
+  if(qty<=0){
+    el.innerHTML='<div style="background:var(--bg);border-radius:10px;padding:12px;font-size:.8rem;color:var(--mu);text-align:center;">Ingresa una cantidad válida</div>';
+    btn.style.display='none';
+    return;
+  }
+  var p=prods.find(function(x){return x.id===calcProdId;});
+  var recs=recetas.filter(function(r){return r.producto_id===calcProdId;});
+  var todosDisponibles=true;
+  var html='';
+
+  html+=`<div style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;margin-bottom:8px;">
+    Insumos para producir ${qty} ${p?p.unidad||'UND':'UND'}:
+  </div>`;
+
+  recs.forEach(function(r){
+    var nombre,disponible,unidad,necesario;
+    necesario=r.cantidad*qty;
+    if(r.granel_id){
+      var g=graneles.find(function(x){return x.id===r.granel_id;});
+      nombre=g?'🧪 '+g.nombre:'?';
+      disponible=g?parseFloat(g.stock_actual||0):0;
+      unidad=g?g.unidad||'LT':'LT';
+    } else {
+      var mp=materias.find(function(m){return m.id===r.materia_prima_id;});
+      nombre=mp?'📦 '+mp.nombre:'?';
+      disponible=mp?parseFloat(mp.stock_actual||0):0;
+      unidad=mp?mp.unidad||'UND':'UND';
+    }
+    var falta=necesario>disponible;
+    if(falta) todosDisponibles=false;
+    var pct=Math.min(100,disponible>0?(disponible/necesario)*100:0);
+
+    html+=`<div style="background:${falta?'#fff8f8':'#f8fffe'};border:1.5px solid ${falta?'var(--d)':'var(--bdr)'};border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div style="font-size:.82rem;font-weight:700;">${nombre}</div>
+        <div style="font-size:.75rem;font-weight:800;color:${falta?'var(--d)':'var(--a)'}">${falta?'⚠️ FALTA':'✅ OK'}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:.72rem;text-align:center;">
+        <div style="background:#fff;border-radius:8px;padding:6px;">
+          <div style="font-weight:800;color:var(--p)">${necesario.toFixed(2)}</div>
+          <div style="color:var(--mu)">Necesario</div>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:6px;">
+          <div style="font-weight:800;color:${falta?'var(--d)':'var(--a)'}">${disponible.toFixed(2)}</div>
+          <div style="color:var(--mu)">Stock</div>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:6px;">
+          <div style="font-weight:800;color:${falta?'var(--d)':'var(--mu)'}">${falta?(necesario-disponible).toFixed(2)+' falta':'OK'}</div>
+          <div style="color:var(--mu)">${unidad}</div>
+        </div>
+      </div>
+      <div style="height:6px;background:var(--bdr);border-radius:6px;overflow:hidden;margin-top:8px;">
+        <div style="height:100%;width:${pct}%;background:${falta?'var(--d)':'var(--a)'};border-radius:6px;"></div>
+      </div>
+    </div>`;
+  });
+
+  if(!todosDisponibles){
+    html+=`<div style="background:#fff8f8;border:1.5px solid var(--d);border-radius:10px;padding:10px;font-size:.8rem;font-weight:700;color:var(--d);text-align:center;">⚠️ Stock insuficiente</div>`;
+    btn.style.display='none';
+  } else {
+    html+=`<div style="background:#f0fdf4;border:1.5px solid var(--a);border-radius:10px;padding:10px;font-size:.8rem;font-weight:700;color:#065f46;text-align:center;">✅ Stock suficiente para producir ${qty} ${p?p.unidad||'UND':'UND'}</div>`;
+    btn.style.display='block';
+  }
+  el.innerHTML=html;
+}
+
+async function confirmarProduccionProd(){
+  var qty=parseFloat(document.getElementById('calcp-qty').value)||0;
+  if(qty<=0) return;
+  var p=prods.find(function(x){return x.id===calcProdId;});
+  var recs=recetas.filter(function(r){return r.producto_id===calcProdId;});
+  var btn=document.getElementById('btnCALCP');
+  btn.disabled=true;btn.textContent='⏳ Registrando...';
+  try{
+    var fecha=hoy();
+    var nota='Producción de '+qty+' '+(p?p.unidad||'UND':'UND')+' de '+(p?p.nombre:'producto');
+    // Descontar insumos
+    for(var i=0;i<recs.length;i++){
+      var r=recs[i];
+      var necesario=r.cantidad*qty;
+      if(r.granel_id){
+        var g=graneles.find(function(x){return x.id===r.granel_id;});
+        if(g){
+          var nuevoStockG=Math.max(0,parseFloat(g.stock_actual||0)-necesario);
+          await sbUpd('graneles',r.granel_id,{stock_actual:nuevoStockG});
+          g.stock_actual=nuevoStockG;
+          await sbIns('movimientos_stock',{id:gid(),tipo:'SALIDA',referencia:'PRODUCCION',materia_prima_id:r.granel_id,cantidad:necesario,nota,fecha});
+        }
+      } else if(r.materia_prima_id){
+        var mp=materias.find(function(m){return m.id===r.materia_prima_id;});
+        if(mp){
+          var nuevoStockM=Math.max(0,parseFloat(mp.stock_actual||0)-necesario);
+          await sbUpd('materias_primas',r.materia_prima_id,{stock_actual:nuevoStockM});
+          mp.stock_actual=nuevoStockM;
+          await sbIns('movimientos_stock',{id:gid(),tipo:'SALIDA',referencia:'PRODUCCION',materia_prima_id:r.materia_prima_id,cantidad:necesario,nota,fecha});
+        }
+      }
+    }
+    // Sumar al stock del producto
+    var nuevoStockP=(parseFloat(p.stock_actual||0))+qty;
+    await sbUpd('productos',p.id,{stock_actual:nuevoStockP});
+    p.stock_actual=nuevoStockP;
+    await sbIns('movimientos_stock',{id:gid(),tipo:'ENTRADA',referencia:'PRODUCCION',producto_id:p.id,cantidad:qty,nota,fecha});
+    // Actualizar costo
+    var costo=calcularCostoProducto(p.id);
+    if(costo>0){await sbUpd('productos',p.id,{costo});p.costo=costo;}
+    toast('✅ Producción registrada','ok');
+    document.getElementById('MCALCP').classList.remove('open');
+    renderStockProds();
+  }catch(e){toast('Error: '+e.message,'err');}
+  finally{btn.disabled=false;btn.textContent='✅ Confirmar y descontar stock';}
 }
 
 init();
