@@ -246,6 +246,27 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 .eEN\ CAMINO{background:#fef3c7;color:#92400e;}
 .eENTREGADO{background:#d1fae5;color:#065f46;}
 .eANULADO{background:#fee2e2;color:#991b1b;text-decoration:line-through;}
+/* COMISIONES */
+.com-vend-card{background:#fff;border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.com-vend-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid var(--bdr);}
+.com-vend-name{font-size:1rem;font-weight:900;color:var(--txt);}
+.com-vend-total{font-size:1.1rem;font-weight:900;color:var(--a);}
+.com-vend-sub{font-size:.72rem;color:var(--mu);font-weight:600;margin-top:2px;}
+.com-detail-row{display:flex;justify-content:space-between;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--bdr);}
+.com-detail-row:last-child{border-bottom:none;}
+.com-detail-info{flex:1;min-width:0;}
+.com-detail-prod{font-size:.78rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.com-detail-meta{font-size:.68rem;color:var(--mu);margin-top:2px;}
+.com-detail-val{font-size:.82rem;font-weight:800;color:var(--a);flex-shrink:0;margin-left:8px;}
+.com-filter-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.com-filter-btn{padding:7px 14px;border-radius:10px;border:1.5px solid var(--bdr);background:#fff;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;color:var(--mu);}
+.com-filter-btn.active{background:var(--p);color:#fff;border-color:var(--p);}
+.com-summary-box{background:linear-gradient(135deg,#0ea5e9,#0284c7);border-radius:14px;padding:16px;margin-bottom:14px;color:#fff;}
+.com-summary-title{font-size:.75rem;font-weight:800;opacity:.8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;}
+.com-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.com-summary-item{background:rgba(255,255,255,.15);border-radius:10px;padding:10px;}
+.com-summary-val{font-size:1.1rem;font-weight:900;}
+.com-summary-lbl{font-size:.65rem;opacity:.8;margin-top:2px;}
 /* DESPACHO DASH */
 .desp-card{background:#fff;border-radius:12px;padding:12px 14px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.06);border-left:4px solid var(--p);}
 .desp-card.entregado{border-left-color:var(--a);opacity:.7;}
@@ -409,13 +430,15 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 
 <!-- DASHBOARD -->
 <div class="screen" id="sc-dashboard">
-  <div class="tabs">
-    <div class="tab active" onclick="dashTab('resumen')" id="dtab-resumen">Resumen</div>
-    <div class="tab" onclick="dashTab('despachos')" id="dtab-despachos">Despachos</div>
+  <div class="tabs" style="overflow-x:auto;flex-wrap:nowrap;">
+    <div class="tab active" onclick="dashTab('resumen')" id="dtab-resumen" style="white-space:nowrap;">Resumen</div>
+    <div class="tab" onclick="dashTab('despachos')" id="dtab-despachos" style="white-space:nowrap;">Despachos</div>
+    <div class="tab" onclick="dashTab('comisiones')" id="dtab-comisiones" style="white-space:nowrap;">Comisiones</div>
   </div>
   <div class="scroll">
     <div id="dash-resumen"></div>
     <div id="dash-despachos" style="display:none"></div>
+    <div id="dash-comisiones" style="display:none"></div>
   </div>
 </div>
 
@@ -1589,7 +1612,7 @@ function getLocation(){
 
 // ── DASHBOARD TABS ────────────────────────────────────────
 function dashTab(t){
-  const ids=['resumen','despachos'];
+  const ids=['resumen','despachos','comisiones'];
   ids.forEach(x=>{
     const el=document.getElementById('dash-'+x);
     const tab=document.getElementById('dtab-'+x);
@@ -1598,6 +1621,7 @@ function dashTab(t){
   });
   if(t==='despachos') renderDespachos();
   if(t==='resumen') renderDash();
+  if(t==='comisiones') renderComisiones();
 }
 
 // ── DESPACHOS DEL DÍA ────────────────────────────────────
@@ -1810,6 +1834,337 @@ async function exportExcel(){
   }catch(e){toast('Error: '+e.message,'err');}
 }
 
+
+// ── CÁLCULO DE COMISIONES ─────────────────────────────────
+function calcComision(vendedor, precioVenta, costoSinIGV, cantidad){
+  const pv=parseFloat(precioVenta)||0;
+  const costo=parseFloat(costoSinIGV)||0;
+  const qty=parseFloat(cantidad)||1;
+  const pvNeto=pv/1.18; // Precio sin IGV
+  const margen=(pvNeto-costo)/pvNeto; // Margen de contribución %
+  let comisionUnit=0;
+  const vNorm=(vendedor||'').toUpperCase();
+  if(vNorm==='JHOSY'){
+    // Jhosy: 11% del margen de contribución en soles
+    comisionUnit=(pvNeto-costo)*0.11;
+  } else {
+    // Cristian, Sonia, Moises, otros
+    // ((PV/1.18 - Costo)/(PV/1.18) - 0.20) × 0.64 × (PV/1.18)
+    const margenAjustado=margen-0.20;
+    comisionUnit=margenAjustado*0.64*pvNeto;
+  }
+  // Si comisión negativa (vendió por debajo del umbral), es 0
+  return Math.max(0, comisionUnit*qty);
+}
+
+// ── RENDER COMISIONES ─────────────────────────────────────
+let comFiltroMes='todos';
+
+async function renderComisiones(){
+  const el=document.getElementById('dash-comisiones');
+  el.innerHTML='<div class="empty"><p>Calculando comisiones...</p></div>';
+  try{
+    // Solo ventas COMPLETADAS (pagadas)
+    const ventasCompletas=ventas.filter(v=>v.estado==='COMPLETADO');
+    if(!ventasCompletas.length){
+      el.innerHTML='<div class="empty"><p>No hay ventas completadas aún.<br>Las comisiones se generan cuando el cliente paga completamente.</p></div>';
+      return;
+    }
+
+    const allDets=await sbGet('detalle_ventas');
+    const now=new Date();
+
+    // Construir meses disponibles
+    const mesesDisp=[];
+    ventas.filter(v=>v.estado==='COMPLETADO').forEach(v=>{
+      if(!v.fecha_pago_real&&!v.fecha) return;
+      const d=new Date(v.fecha_pago_real||v.fecha);
+      const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const label=MESES[d.getMonth()]+' '+d.getFullYear();
+      if(!mesesDisp.find(m=>m.key===key)) mesesDisp.push({key,label});
+    });
+    mesesDisp.sort((a,b)=>b.key.localeCompare(a.key));
+
+    // Filtrar según mes seleccionado
+    const ventasFilt=comFiltroMes==='todos'?ventasCompletas:ventasCompletas.filter(v=>{
+      const d=new Date(v.fecha_pago_real||v.fecha||'');
+      const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      return key===comFiltroMes;
+    });
+
+    // Calcular comisiones por vendedor
+    const comVend={};
+    const detalleVend={};
+    ventasFilt.forEach(v=>{
+      const vend=v.vendedor||'Sin vendedor';
+      if(!comVend[vend]){comVend[vend]=0;detalleVend[vend]=[];}
+      const dets=allDets.filter(d=>d.venta_id===v.id);
+      dets.forEach(d=>{
+        const pr=prods.find(p=>p.id===d.producto_id);
+        const costo=pr?parseFloat(pr.costo||0):0;
+        const com=calcComision(vend,parseFloat(d.precio_final||0),costo,parseFloat(d.cantidad||1));
+        comVend[vend]+=com;
+        const c=clis.find(x=>x.id===v.cliente_id);
+        detalleVend[vend].push({
+          venta_id:v.id,
+          fecha:v.fecha_pago_real||v.fecha||'',
+          cliente:c?(c.nombres||c.alias||'?'):'?',
+          producto:pr?pr.nombre||d.producto_id:d.producto_id,
+          cantidad:d.cantidad,
+          pvNeto:(parseFloat(d.precio_final||0)/1.18).toFixed(2),
+          costo:(pr?parseFloat(pr.costo||0):0).toFixed(2),
+          comision:com.toFixed(2)
+        });
+      });
+    });
+
+    const totalGeneral=Object.values(comVend).reduce((s,v)=>s+v,0);
+
+    // Construir HTML
+    let html=`
+    <!-- Filtro de meses -->
+    <div class="com-filter-bar">
+      <button class="com-filter-btn ${comFiltroMes==='todos'?'active':''}" onclick="setComFiltro('todos')">Todos</button>
+      ${mesesDisp.map(m=>`<button class="com-filter-btn ${comFiltroMes===m.key?'active':''}" onclick="setComFiltro('${m.key}')">${m.label}</button>`).join('')}
+    </div>
+
+    <!-- Resumen total -->
+    <div class="com-summary-box">
+      <div class="com-summary-title">Comisiones ${comFiltroMes==='todos'?'totales':'del período'}</div>
+      <div class="com-summary-grid">
+        <div class="com-summary-item">
+          <div class="com-summary-val">S/ ${totalGeneral.toFixed(2)}</div>
+          <div class="com-summary-lbl">Total a pagar</div>
+        </div>
+        <div class="com-summary-item">
+          <div class="com-summary-val">${ventasFilt.length}</div>
+          <div class="com-summary-lbl">Ventas completadas</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Botones exportar -->
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <button onclick="exportComisiones()" style="flex:1;padding:10px;background:#217346;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.78rem;font-weight:800;cursor:pointer;">📊 Exportar Excel</button>
+      <button onclick="exportComisionesPDF()" style="flex:1;padding:10px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.78rem;font-weight:800;cursor:pointer;">📄 Exportar PDF</button>
+    </div>`;
+
+    // Por vendedor
+    Object.entries(comVend).sort((a,b)=>b[1]-a[1]).forEach(([vend,total])=>{
+      const dets=detalleVend[vend];
+      html+=`<div class="com-vend-card">
+        <div class="com-vend-header">
+          <div>
+            <div class="com-vend-name">${vend}</div>
+            <div class="com-vend-sub">${dets.length} línea${dets.length>1?'s':''} de venta</div>
+          </div>
+          <div style="text-align:right">
+            <div class="com-vend-total">S/ ${total.toFixed(2)}</div>
+            <div class="com-vend-sub">Comisión total</div>
+          </div>
+        </div>
+        <!-- Detalle por producto -->
+        ${dets.map(d=>`
+          <div class="com-detail-row">
+            <div class="com-detail-info">
+              <div class="com-detail-prod">${d.producto}</div>
+              <div class="com-detail-meta">
+                ${d.fecha} · ${d.cliente} · ${d.cantidad} und
+                <br>PV neto: S/ ${d.pvNeto} · Costo: S/ ${d.costo}
+              </div>
+            </div>
+            <div class="com-detail-val">S/ ${d.comision}</div>
+          </div>`).join('')}
+      </div>`;
+    });
+
+    if(!Object.keys(comVend).length){
+      html+='<div class="empty"><p>Sin ventas completadas en este período</p></div>';
+    }
+
+    el.innerHTML=html;
+  }catch(e){el.innerHTML=`<div class="empty"><p>Error: ${e.message}</p></div>`;}
+}
+
+function setComFiltro(mes){
+  comFiltroMes=mes;
+  renderComisiones();
+}
+
+// ── EXPORTAR COMISIONES EXCEL ─────────────────────────────
+async function exportComisiones(){
+  toast('Generando Excel...','');
+  try{
+    const ventasCompletas=ventas.filter(v=>v.estado==='COMPLETADO'&&(comFiltroMes==='todos'||
+      (()=>{const d=new Date(v.fecha_pago_real||v.fecha||'');return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`===comFiltroMes;})()));
+    const allDets=await sbGet('detalle_ventas');
+
+    var rows=[['VENDEDOR','FECHA_PAGO','CLIENTE','PRODUCTO','CANTIDAD','PRECIO_VENTA','PRECIO_NETO','COSTO','MARGEN_S','COMISION_S','FORMULA']];
+    ventasCompletas.forEach(function(v){
+      var c=clis.find(function(x){return x.id===v.cliente_id;});
+      var dets=allDets.filter(function(d){return d.venta_id===v.id;});
+      dets.forEach(function(d){
+        var pr=prods.find(function(p){return p.id===d.producto_id;});
+        var costo=pr?parseFloat(pr.costo||0):0;
+        var pv=parseFloat(d.precio_final||0);
+        var pvNeto=pv/1.18;
+        var margenS=pvNeto-costo;
+        var com=calcComision(v.vendedor,pv,costo,parseFloat(d.cantidad||1));
+        var formula=(v.vendedor||'').toUpperCase()==='JHOSY'?'11% margen':'(margen%-20%)x64%xPVneto';
+        rows.push([
+          v.vendedor||'',
+          v.fecha_pago_real||v.fecha||'',
+          c?c.nombres||c.alias||'':'',
+          pr?pr.nombre||'':d.producto_id||'',
+          d.cantidad,
+          pv.toFixed(2),
+          pvNeto.toFixed(2),
+          costo.toFixed(2),
+          margenS.toFixed(2),
+          com.toFixed(2),
+          formula
+        ]);
+      });
+    });
+
+    var bom='﻿';
+    function toCSV(rows){
+      return rows.map(function(r){
+        return r.map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}).join(',');
+      }).join('
+');
+    }
+    var blob=new Blob([bom+toCSV(rows)],{type:'text/csv;charset=utf-8;'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;
+    a.download='Frostech_Comisiones_'+new Date().toISOString().split('T')[0]+'.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Comisiones exportadas','ok');
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+
+// ── EXPORTAR COMISIONES PDF ───────────────────────────────
+async function exportComisionesPDF(){
+  toast('Generando PDF...','');
+  try{
+    const ventasCompletas=ventas.filter(v=>v.estado==='COMPLETADO'&&(comFiltroMes==='todos'||
+      (()=>{const d=new Date(v.fecha_pago_real||v.fecha||'');return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`===comFiltroMes;})()));
+    const allDets=await sbGet('detalle_ventas');
+    const{jsPDF}=window.jspdf;
+    const doc=new jsPDF({unit:'mm',format:'a4'});
+    const now=new Date();
+    const fecha=now.getDate().toString().padStart(2,'0')+'/'+(now.getMonth()+1).toString().padStart(2,'0')+'/'+now.getFullYear();
+    const periodo=comFiltroMes==='todos'?'Todos los periodos':MESES[parseInt(comFiltroMes.split('-')[1])-1]+' '+comFiltroMes.split('-')[0];
+
+    doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(14,117,168);
+    doc.text('FROSTECH - REPORTE DE COMISIONES',105,14,{align:'center'});
+    doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(100,100,100);
+    doc.text('Periodo: '+periodo+'   |   Generado: '+fecha,105,21,{align:'center'});
+    doc.setDrawColor(14,117,168);doc.setLineWidth(.8);doc.line(10,26,200,26);
+
+    // Agrupar por vendedor
+    var comVend={};
+    var detalleVend={};
+    ventasCompletas.forEach(function(v){
+      var vend=v.vendedor||'Sin vendedor';
+      if(!comVend[vend]){comVend[vend]=0;detalleVend[vend]=[];}
+      var dets=allDets.filter(function(d){return d.venta_id===v.id;});
+      dets.forEach(function(d){
+        var pr=prods.find(function(p){return p.id===d.producto_id;});
+        var costo=pr?parseFloat(pr.costo||0):0;
+        var pv=parseFloat(d.precio_final||0);
+        var com=calcComision(vend,pv,costo,parseFloat(d.cantidad||1));
+        var c=clis.find(function(x){return x.id===v.cliente_id;});
+        comVend[vend]+=com;
+        detalleVend[vend].push({
+          fecha:v.fecha_pago_real||v.fecha||'',
+          cliente:c?c.nombres||c.alias||'?':'?',
+          producto:pr?pr.nombre||d.producto_id:d.producto_id,
+          cantidad:d.cantidad,
+          pvNeto:(pv/1.18).toFixed(2),
+          costo:costo.toFixed(2),
+          comision:com.toFixed(2)
+        });
+      });
+    });
+
+    var totalGen=Object.values(comVend).reduce(function(s,v){return s+v;},0);
+    var y=34;
+
+    // Resumen por vendedor
+    doc.setFillColor(240,249,255);doc.roundedRect(10,y,190,8+Object.keys(comVend).length*7,2,2,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(14,117,168);
+    doc.text('RESUMEN DE COMISIONES',14,y+5);
+    y+=10;
+    Object.entries(comVend).sort(function(a,b){return b[1]-a[1];}).forEach(function(kv){
+      doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(30,30,30);
+      doc.text(kv[0],14,y);
+      doc.setFont('helvetica','bold');doc.setTextColor(16,185,129);
+      doc.text('S/ '+kv[1].toFixed(2),198,y,{align:'right'});
+      y+=7;
+    });
+    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(14,117,168);
+    y+=2;doc.line(10,y,200,y);y+=6;
+    doc.text('TOTAL COMISIONES:',14,y);
+    doc.text('S/ '+totalGen.toFixed(2),198,y,{align:'right'});
+    y+=10;
+
+    // Detalle por vendedor
+    Object.entries(comVend).sort(function(a,b){return b[1]-a[1];}).forEach(function(kv){
+      var vend=kv[0];
+      var dets=detalleVend[vend];
+      if(y>240){doc.addPage();y=15;}
+      
+      doc.setFillColor(14,117,168);doc.rect(10,y,190,8,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(255,255,255);
+      doc.text(vend.toUpperCase(),14,y+5);
+      doc.text('Comision: S/ '+kv[1].toFixed(2),198,y+5,{align:'right'});
+      y+=10;
+
+      // Cabecera tabla
+      doc.setFillColor(230,240,255);doc.rect(10,y,190,6,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(14,117,168);
+      doc.text('FECHA',12,y+4);doc.text('CLIENTE',35,y+4);doc.text('PRODUCTO',80,y+4);
+      doc.text('CANT',138,y+4);doc.text('PV NETO',153,y+4);doc.text('COSTO',170,y+4);doc.text('COMIS.',188,y+4,{align:'right'});
+      y+=7;
+
+      dets.forEach(function(d,i){
+        if(y>275){doc.addPage();y=15;}
+        if(i%2===0){doc.setFillColor(248,250,252);doc.rect(10,y-1,190,6,'F');}
+        doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(40,40,40);
+        doc.text(d.fecha?d.fecha.substring(5):'',12,y+3);
+        doc.text(d.cliente.substring(0,18),35,y+3);
+        const prodTxt=d.producto.substring(0,22);
+        doc.text(prodTxt,80,y+3);
+        doc.text(String(d.cantidad),140,y+3,{align:'right'});
+        doc.text(d.pvNeto,162,y+3,{align:'right'});
+        doc.text(d.costo,178,y+3,{align:'right'});
+        doc.setFont('helvetica','bold');doc.setTextColor(16,185,129);
+        doc.text(d.comision,198,y+3,{align:'right'});
+        y+=6;
+      });
+
+      doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(14,117,168);
+      doc.setDrawColor(14,117,168);doc.line(140,y,200,y);y+=4;
+      doc.text('Total '+vend+':',140,y);
+      doc.text('S/ '+kv[1].toFixed(2),198,y,{align:'right'});
+      y+=10;
+    });
+
+    // Pie
+    var totalPags=doc.getNumberOfPages();
+    for(var p=1;p<=totalPags;p++){
+      doc.setPage(p);
+      doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(150,150,150);
+      doc.text('FROSTECH | Reporte confidencial | Pag. '+p+'/'+totalPags,105,290,{align:'center'});
+    }
+
+    doc.save('Comisiones_Frostech_'+periodo.replace(/ /g,'_')+'_'+fecha.replace(/\//g,'-')+'.pdf');
+    toast('PDF de comisiones generado','ok');
+  }catch(e){toast('Error: '+e.message,'err');}
+}
 
 init();
 </script>
