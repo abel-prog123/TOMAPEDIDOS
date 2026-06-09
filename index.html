@@ -1736,100 +1736,80 @@ async function exportDespachos(){
 
 // ── EXPORTAR EXCEL (CSV) ──────────────────────────────────
 async function exportExcel(){
-  toast('Generando Excel...','');
+  toast('Generando archivos...','');
   try{
     const allDets=await sbGet('detalle_ventas');
-    
-    // Hoja 1: VENTAS
-    const ventasRows=[
-      ['ID','FECHA','CLIENTE','RUC/DNI','VENDEDOR','FORMA PAGO','COMPROBANTE','ESTADO','TOTAL','DESCUENTO','ABONADO','PENDIENTE','FECHA ENTREGA','FECHA PAGO REAL','OBSERVACIONES']
-    ];
-    ventas.forEach(v=>{
-      const c=clis.find(x=>x.id===v.cliente_id);
-      const nom=c?(c.nombres||c.alias||''):'';
-      const ruc=c?c.dni_ruc||'':'';
-      const ab=getAb(v.id);
-      const pend=parseFloat(v.total||0)-ab;
+    const abonosData=await sbGet('abonos');
+
+    function toCSV(rows){
+      return rows.map(function(r){
+        return r.map(function(v){
+          return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+        }).join(',');
+      }).join('\n');
+    }
+
+    // CSV 1: Detalle de ventas (ideal para Power BI)
+    var detRows=[['ID','VENTA_ID','FECHA_VENTA','CLIENTE','RUC','VENDEDOR','PRODUCTO','CATEGORIA','CANTIDAD','PRECIO_BASE','PRECIO_FINAL','TOTAL','COMISION']];
+    allDets.forEach(function(d){
+      var v=ventas.find(function(x){return x.id===d.venta_id;});
+      var c=v?clis.find(function(x){return x.id===v.cliente_id;}):null;
+      var pr=prods.find(function(x){return x.id===d.producto_id;});
+      detRows.push([
+        d.id, d.venta_id,
+        v?v.fecha||'':'',
+        c?c.nombres||c.alias||'':'',
+        c?c.dni_ruc||'':'',
+        v?v.vendedor||'':'',
+        pr?pr.nombre||'':d.producto_id||'',
+        pr?pr.categoria||'':'',
+        d.cantidad, d.precio_base, d.precio_final, d.total, d.comision
+      ]);
+    });
+
+    // CSV 2: Ventas resumen
+    var ventasRows=[['ID','FECHA','CLIENTE','RUC','VENDEDOR','FORMA_PAGO','COMPROBANTE','ESTADO','TOTAL','ABONADO','PENDIENTE','FECHA_ENTREGA','FECHA_PAGO_REAL','OBSERVACIONES']];
+    ventas.forEach(function(v){
+      var c=clis.find(function(x){return x.id===v.cliente_id;});
+      var ab=getAb(v.id);
+      var pend=parseFloat(v.total||0)-ab;
       ventasRows.push([
-        v.id, v.fecha||'', nom, ruc, v.vendedor||'',
-        v.forma_pago||'', v.comprobante||'', v.estado||'',
+        v.id, v.fecha||'',
+        c?c.nombres||c.alias||'':'',
+        c?c.dni_ruc||'':'',
+        v.vendedor||'', v.forma_pago||'', v.comprobante||'', v.estado||'',
         parseFloat(v.total||0).toFixed(2),
-        parseFloat(v.descuento||0).toFixed(2),
         ab.toFixed(2), pend.toFixed(2),
         v.fecha_entrega||'', v.fecha_pago_real||'',
         (v.observaciones||'').replace(/,/g,';')
       ]);
     });
 
-    // Hoja 2: DETALLE VENTAS
-    const detRows=[
-      ['ID','VENTA_ID','FECHA_VENTA','CLIENTE','PRODUCTO','CATEGORIA','CANTIDAD','PRECIO_BASE','PRECIO_FINAL','TOTAL','COMISION']
-    ];
-    allDets.forEach(d=>{
-      const v=ventas.find(x=>x.id===d.venta_id);
-      const c=v?clis.find(x=>x.id===v.cliente_id):null;
-      const pr=prods.find(x=>x.id===d.producto_id);
-      detRows.push([
-        d.id, d.venta_id,
-        v?v.fecha||'':'',
-        c?(c.nombres||c.alias||''):'',
-        pr?pr.nombre||'':d.producto_id||'',
-        pr?pr.categoria||'':'',
-        d.cantidad, d.precio_base, d.precio_final,
-        d.total, d.comision
-      ]);
-    });
+    // Descargar CSV 1
+    var bom='﻿';
+    var b1=new Blob([bom+toCSV(detRows)],{type:'text/csv;charset=utf-8;'});
+    var u1=URL.createObjectURL(b1);
+    var a1=document.createElement('a');
+    a1.href=u1;
+    a1.download='Frostech_Detalle_'+new Date().toISOString().split('T')[0]+'.csv';
+    a1.click();
+    URL.revokeObjectURL(u1);
 
-    // Hoja 3: ABONOS
-    const abonosData=await sbGet('abonos');
-    const abRows=[['ID','VENTA_ID','CLIENTE','MONTO','FECHA']];
-    abonosData.forEach(a=>{
-      const v=ventas.find(x=>x.id===a.venta_id);
-      const c=v?clis.find(x=>x.id===v.cliente_id):null;
-      abRows.push([
-        a.id, a.venta_id,
-        c?(c.nombres||c.alias||''):'',
-        a.monto, a.fecha||''
-      ]);
-    });
+    // Descargar CSV 2 con delay
+    setTimeout(function(){
+      var b2=new Blob([bom+toCSV(ventasRows)],{type:'text/csv;charset=utf-8;'});
+      var u2=URL.createObjectURL(b2);
+      var a2=document.createElement('a');
+      a2.href=u2;
+      a2.download='Frostech_Ventas_'+new Date().toISOString().split('T')[0]+'.csv';
+      a2.click();
+      URL.revokeObjectURL(u2);
+    },800);
 
-    // Hoja 4: CLIENTES
-    const cliRows=[['ID','NOMBRES','ALIAS','RUC/DNI','TELEFONO','CORREO','DIRECCION','UBICACION']];
-    clis.forEach(c=>cliRows.push([c.id,c.nombres||'',c.alias||'',c.dni_ruc||'',c.telefono||'',c.correo||'',c.direccion||'',c.ubicacion||'']));
-
-    // Hoja 5: PRODUCTOS
-    const prodRows=[['ID','NOMBRE','CATEGORIA','PRECIO','COSTO','COMISION']];
-    prods.forEach(p=>prodRows.push([p.id,p.nombre||'',p.categoria||'',p.precio||0,p.costo||0,p.comision||0]));
-
-    // Convertir a CSV con múltiples hojas (Excel abre múltiples CSVs)
-    // Crear un ZIP con múltiples CSVs sería ideal pero sin librería
-    // Mejor: crear un CSV combinado con separadores de hoja
-    const toCSV=rows=>rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('
-');
-    
-    // Exportar como CSV único con todas las ventas (el más útil para Power BI)
-    // Power BI importa CSV directamente
-    const csvContent='﻿'+toCSV(detRows); // BOM para Excel en español
-    
-    const blob=new Blob([csvContent],{type:'text/csv;charset=utf-8;'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url; a.download='Frostech_Detalle_Ventas_'+new Date().toISOString().split('T')[0]+'.csv';
-    a.click(); URL.revokeObjectURL(url);
-
-    // También exportar ventas resumen
-    setTimeout(()=>{
-      const csv2='﻿'+toCSV(ventasRows);
-      const b2=new Blob([csv2],{type:'text/csv;charset=utf-8;'});
-      const u2=URL.createObjectURL(b2);
-      const a2=document.createElement('a');
-      a2.href=u2; a2.download='Frostech_Ventas_'+new Date().toISOString().split('T')[0]+'.csv';
-      a2.click(); URL.revokeObjectURL(u2);
-    },500);
-
-    toast('✅ 2 archivos CSV descargados','ok');
+    toast('2 archivos CSV descargados','ok');
   }catch(e){toast('Error: '+e.message,'err');}
 }
+
 
 init();
 </script>
