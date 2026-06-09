@@ -2028,11 +2028,11 @@ async function exportComisiones(){
     });
 
     var bom='﻿';
+    var NL=String.fromCharCode(10);
     function toCSV(rows){
       return rows.map(function(r){
         return r.map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}).join(',');
-      }).join('
-');
+      }).join(NL);
     }
     var blob=new Blob([bom+toCSV(rows)],{type:'text/csv;charset=utf-8;'});
     var url=URL.createObjectURL(blob);
