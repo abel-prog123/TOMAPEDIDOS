@@ -642,7 +642,9 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     </div>
     <div class="fg"><label>Stock actual</label><input type="number" id="gl-stock" step="0.01" min="0" class="minp" style="width:100%" placeholder="0"></div>
     <div class="fg"><label>Stock mínimo (alerta)</label><input type="number" id="gl-minimo" step="0.01" min="0" class="minp" style="width:100%" placeholder="0"></div>
-    <div class="fg"><label>Costo unitario (S/)</label><input type="number" id="gl-costo" step="0.01" min="0" class="minp" style="width:100%" placeholder="0.00"></div>
+    <div style="background:#f0fdf4;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:.78rem;color:#065f46;font-weight:600;">
+      💡 El costo unitario se calcula automáticamente desde la receta de materias primas
+    </div>
     <div class="edit-actions">
       <button class="btn-edit" onclick="saveGranel()" id="btnGL">✓ GUARDAR</button>
       <button class="btn-del" onclick="deleteGranel()" id="btnDGL" style="display:none">🗑</button>
@@ -657,8 +659,11 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="mh"></div>
     <div class="mtit">🧪 Receta del Granel</div>
     <div class="msub" id="MRGL-sub"></div>
-    <div style="background:#fef3c7;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:.75rem;color:#92400e;font-weight:600;">
-      Ingredientes de materias primas para producir 1 unidad de este granel
+    <div style="background:#fef3c7;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:.75rem;color:#92400e;font-weight:600;">
+      Ingredientes para producir 1 unidad de este granel
+    </div>
+    <div id="gl-costo-calc" style="background:#f0fdf4;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:.78rem;color:#065f46;font-weight:700;text-align:center;">
+      Costo calculado: S/ 0.00 por unidad
     </div>
     <div id="receta-granel-list" style="margin-bottom:12px;"></div>
     <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
@@ -2740,7 +2745,7 @@ function renderStockGraneles(){
     return`<div class="stock-card ${cls}">
       <div class="stock-info">
         <div class="stock-nombre">${g.nombre}</div>
-        <div class="stock-unidad">${g.unidad||'LT'} · Mín: ${min} · ${nReceta} ingrediente${nReceta!==1?'s':''}</div>
+        <div class="stock-unidad">${g.unidad||'LT'} · Mín: ${min} · ${nReceta} ingrediente${nReceta!==1?'s':''} · Costo: S/ ${parseFloat(g.costo_unitario||0).toFixed(3)}/u</div>
         <div class="stock-actions">
           <button class="stock-btn entrada" onclick="abrirMov('granel','${g.id}','${g.nombre}','entrada')">+ Entrada</button>
           <button class="stock-btn salida" onclick="abrirMov('granel','${g.id}','${g.nombre}','salida')">- Salida</button>
@@ -2773,7 +2778,7 @@ function editGranel(id){
   document.getElementById('gl-unidad').value=g.unidad||'LT';
   document.getElementById('gl-stock').value=g.stock_actual||0;
   document.getElementById('gl-minimo').value=g.stock_minimo||0;
-  document.getElementById('gl-costo').value=g.costo_unitario||0;
+
   document.getElementById('MGL-tit').textContent='✏️ Editar Granel';
   document.getElementById('btnDGL').style.display='block';
   document.getElementById('MGL').classList.add('open');
@@ -2785,12 +2790,22 @@ async function saveGranel(){
   const btn=document.getElementById('btnGL');
   btn.disabled=true;btn.textContent='⏳ Guardando...';
   try{
+    // Calcular costo desde receta
+    var costoCalc=0;
+    if(editGranelId||true){
+      var gId=editGranelId||'_nuevo_';
+      var recs=recetasGranel.filter(function(r){return r.granel_id===gId;});
+      recs.forEach(function(r){
+        var mp=materias.find(function(m){return m.id===r.materia_prima_id;});
+        if(mp) costoCalc+=parseFloat(mp.costo_unitario||0)*parseFloat(r.cantidad||0);
+      });
+    }
     const data={
       nombre,
       unidad:document.getElementById('gl-unidad').value,
       stock_actual:parseFloat(document.getElementById('gl-stock').value)||0,
       stock_minimo:parseFloat(document.getElementById('gl-minimo').value)||0,
-      costo_unitario:parseFloat(document.getElementById('gl-costo').value)||0,
+      costo_unitario:costoCalc,
     };
     if(editGranelId){
       await sbUpd('graneles',editGranelId,data);
@@ -2835,6 +2850,10 @@ function abrirRecetaGranel(granelId, granelNombre){
   };
   if(materias.length){const mp=materias[0];if(mp&&mp.unidad)document.getElementById('recgl-unidad').value=mp.unidad;}
   renderRecetaGranelList(granelId);
+  // Mostrar costo actual
+  const g=graneles.find(x=>x.id===granelId);
+  const costoEl=document.getElementById('gl-costo-calc');
+  if(costoEl&&g) costoEl.textContent='Costo calculado: S/ '+parseFloat(g.costo_unitario||0).toFixed(4)+' por unidad';
   document.getElementById('MRGL').classList.add('open');
 }
 
@@ -2869,6 +2888,7 @@ async function addRecetaGranelItem(){
     await sbIns('recetas_granel',rec);
     recetasGranel.push(rec);
     renderRecetaGranelList(editRecetaGranelId);
+    await recalcularCostoGranel(editRecetaGranelId);
     document.getElementById('recgl-qty').value='';
     toast('✓ Ingrediente agregado','ok');
   }catch(e){toast('Error: '+e.message,'err');}
@@ -2879,8 +2899,26 @@ async function deleteRecetaGranelItem(recId,granelId){
     await sb('recetas_granel','DELETE',null,'?id=eq.'+recId);
     recetasGranel=recetasGranel.filter(x=>x.id!==recId);
     renderRecetaGranelList(granelId);
+    await recalcularCostoGranel(granelId);
     toast('✓ Eliminado','ok');
   }catch(e){toast('Error: '+e.message,'err');}
+}
+
+async function recalcularCostoGranel(granelId){
+  try{
+    var recs=recetasGranel.filter(function(r){return r.granel_id===granelId;});
+    var costo=0;
+    recs.forEach(function(r){
+      var mp=materias.find(function(m){return m.id===r.materia_prima_id;});
+      if(mp) costo+=parseFloat(mp.costo_unitario||0)*parseFloat(r.cantidad||0);
+    });
+    await sbUpd('graneles',granelId,{costo_unitario:costo});
+    var g=graneles.find(function(x){return x.id===granelId;});
+    if(g) g.costo_unitario=costo;
+    // Mostrar costo actualizado en el modal
+    var costoEl=document.getElementById('gl-costo-calc');
+    if(costoEl) costoEl.textContent='Costo calculado: S/ '+costo.toFixed(4)+' por unidad';
+  }catch(e){console.error('Error recalculando costo:',e);}
 }
 
 // Receta de producto con granel (granel + envases → producto terminado)
