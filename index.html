@@ -802,7 +802,7 @@ function renderP(list){
   if(!list.length){el.innerHTML='<div class="empty"><p>No se encontraron productos</p></div>';return;}
   el.innerHTML=list.map(p=>`
     <div class="pc">
-      <div class="pi" style="${p.foto_url?'padding:0;overflow:hidden;border-radius:10px;':''}">${p.foto_url?`<img src="${p.foto_url}" style="width:100%;height:100%;object-fit:cover;">`:getEmoji(p.categoria)}</div>
+      <div class="pi" style="${p.foto_url?'padding:0;overflow:hidden;border-radius:10px;cursor:pointer;':''}">${p.foto_url?`<img src="${p.foto_url}" style="width:100%;height:100%;object-fit:cover;" onclick="event.stopPropagation();openLBUrl('${p.foto_url}')">`:getEmoji(p.categoria)}</div>
       <div class="pinfo">
         <div class="pcat">${p.categoria||''}</div>
         <div class="pname">${p.nombre}</div>
@@ -1328,6 +1328,10 @@ async function renderDash(){
         <div class="dash-card"><div class="dash-icon">🚨</div><div class="dash-val orange">${vencidas.length}</div><div class="dash-lbl">Pagos vencidos</div></div>
         <div class="dash-card"><div class="dash-icon">📦</div><div class="dash-val">${ventas.length}</div><div class="dash-lbl">Total ventas</div></div>
       </div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button onclick="exportExcel()" style="flex:1;padding:10px;background:#217346;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.8rem;font-weight:800;cursor:pointer;">📊 Exportar Excel</button>
+        <button onclick="exportDespachos()" style="flex:1;padding:10px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.8rem;font-weight:800;cursor:pointer;">📄 PDF Despachos</button>
+      </div>
       <div class="dash-sec">🏆 Top 5 Clientes</div>
       <div class="dash-card full">${topClis.map(([cid,tot])=>{const c=clis.find(x=>x.id===cid);const nom=c?(c.nombres||c.alias||cid):cid;return`<div class="dash-list-item"><div class="dash-list-name">${nom}</div><div class="dash-list-val">S/ ${tot.toFixed(0)}</div></div>`;}).join('')||'<p style="color:var(--mu);font-size:.8rem;text-align:center;padding:8px">Sin datos</p>'}</div>
       <div class="dash-sec">👤 Por Vendedor</div>
@@ -1661,52 +1665,171 @@ async function exportDespachos(){
   const now=new Date();
   const fecha=`${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getFullYear()}`;
   
-  doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(14,117,168);
-  doc.text('FROSTECH - HOJA DE DESPACHOS',105,15,{align:'center'});
+  // Header
+  doc.setFont('helvetica','bold');doc.setFontSize(16);doc.setTextColor(14,117,168);
+  doc.text('FROSTECH - HOJA DE DESPACHOS',105,14,{align:'center'});
   doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(100,100,100);
-  doc.text('Fecha: '+fecha+' | Total pedidos: '+activas.length,105,22,{align:'center'});
-  doc.setDrawColor(14,117,168);doc.setLineWidth(.5);doc.line(10,26,200,26);
-  
-  let y=32;
+  doc.text('Fecha: '+fecha+'   |   Total pedidos pendientes: '+activas.length,105,21,{align:'center'});
+  doc.setDrawColor(14,117,168);doc.setLineWidth(.8);doc.line(10,26,200,26);
+
+  let y=34;
   activas.forEach((v,i)=>{
-    if(y>260){doc.addPage();y=15;}
     const c=clis.find(x=>x.id===v.cliente_id);
-    const nom=c?(c.nombres||c.alias||'?'):'Sin nombre';
-    const dir=c?c.direccion||'':'-';
-    const tel=c?c.telefono||'':'-';
+    const nom=c?(c.nombres||c.alias||'Sin nombre'):'Sin nombre';
+    const dir=c&&c.direccion?c.direccion:'No especificada';
+    const tel=c&&c.telefono?'Tel: '+c.telefono:'';
     const dets=allDets.filter(d=>d.venta_id===v.id);
     const ab=getAb(v.id);
     const pend=parseFloat(v.total||0)-ab;
+    const prodsStr=dets.map(d=>{
+      const pr=prods.find(p=>p.id===d.producto_id)||{nombre:d.producto_id||'Producto'};
+      return d.cantidad+'x '+pr.nombre;
+    }).join(', ')||'Sin detalle';
+    const prodsLines=doc.splitTextToSize('Productos: '+prodsStr,130);
+    const boxH=Math.max(32, 28+(prodsLines.length-1)*5);
     
-    // Fondo alternado
-    if(i%2===0){doc.setFillColor(248,250,252);doc.rect(10,y-2,190,22+(dets.length*5),'F');}
+    if(y+boxH>278){doc.addPage();y=15;}
     
+    // Caja con borde izquierdo de color
+    const pagoColor=pend>0?[239,68,68]:[16,185,129];
+    doc.setFillColor(pend>0?255:240, pend>0?248:253, pend>0?248:244);
+    doc.roundedRect(10,y,190,boxH,2,2,'F');
+    doc.setDrawColor(...pagoColor);
+    doc.setLineWidth(3);
+    doc.line(10,y,10,y+boxH);
+    doc.setLineWidth(0.3);
+    doc.setDrawColor(220,220,220);
+    doc.rect(10,y,190,boxH);
+
+    // Número y nombre
     doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(14,117,168);
-    doc.text(`${i+1}. ${nom}`,12,y+3);
+    doc.text((i+1)+'. '+nom,15,y+7);
+    
+    // Estado
+    doc.setFont('helvetica','bold');doc.setFontSize(8);
+    doc.setTextColor(...pagoColor);
+    doc.text(pend>0?'DEBE: S/ '+pend.toFixed(2):'PAGADO',198,y+7,{align:'right'});
+    doc.text('TOTAL: S/ '+parseFloat(v.total||0).toFixed(2),198,y+13,{align:'right'});
+
+    // Datos
     doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(60,60,60);
-    doc.text(`📞 ${tel} | 📍 ${dir}`,12,y+8);
-    doc.text(`Entrega: ${v.fecha_entrega||'-'} | Pago: ${v.forma_pago||'-'}`,12,y+13);
-    
-    // Productos
-    const prodsStr=dets.map(d=>{const pr=prods.find(p=>p.id===d.producto_id)||{nombre:d.producto_id};return`${d.cantidad}x ${pr.nombre}`;}).join(', ');
-    const prodsLines=doc.splitTextToSize('Productos: '+prodsStr,140);
-    doc.text(prodsLines,12,y+18);
-    
-    // Monto
-    doc.setFont('helvetica','bold');
-    doc.setTextColor(pend>0?220:16,pend>0?50:185,pend>0?50:129);
-    doc.text(pend>0?`DEBE: S/ ${pend.toFixed(2)}`:'PAGADO',175,y+8,{align:'right'});
-    doc.text(`TOTAL: S/ ${parseFloat(v.total||0).toFixed(2)}`,175,y+13,{align:'right'});
-    
-    y+=26+(Math.max(0,prodsLines.length-1)*4);
-    doc.setDrawColor(220,220,220);doc.line(10,y,200,y);y+=4;
+    doc.text('Tel: '+tel.replace('Tel: ','')+'   Dir: '+dir,15,y+13);
+    doc.text('Entrega: '+(v.fecha_entrega||'Sin fecha')+'   Pago: '+(v.forma_pago||'-')+'   Vendedor: '+(v.vendedor||'-'),15,y+19);
+    doc.text(prodsLines,15,y+25);
+
+    y+=boxH+4;
   });
-  
-  doc.save('Despachos_Frostech_'+fecha.replace(/\//g,'-')+'.pdf');
-  toast('✅ PDF de despachos generado','ok');
+
+  // Pie
+  const totalPags=doc.getNumberOfPages();
+  for(let p=1;p<=totalPags;p++){
+    doc.setPage(p);
+    doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(150,150,150);
+    doc.text('FROSTECH | 946 901 261 | asesoriasfrostech@gmail.com   -   Pag. '+p+'/'+totalPags,105,290,{align:'center'});
+  }
+
+  doc.save('Despachos_'+fecha.replace(/\//g,'-')+'.pdf');
+  toast('PDF de despachos generado','ok');
 }
 
 // Override eliminado - renderDash ya usa dash-resumen directamente
+
+// ── EXPORTAR EXCEL (CSV) ──────────────────────────────────
+async function exportExcel(){
+  toast('Generando Excel...','');
+  try{
+    const allDets=await sbGet('detalle_ventas');
+    
+    // Hoja 1: VENTAS
+    const ventasRows=[
+      ['ID','FECHA','CLIENTE','RUC/DNI','VENDEDOR','FORMA PAGO','COMPROBANTE','ESTADO','TOTAL','DESCUENTO','ABONADO','PENDIENTE','FECHA ENTREGA','FECHA PAGO REAL','OBSERVACIONES']
+    ];
+    ventas.forEach(v=>{
+      const c=clis.find(x=>x.id===v.cliente_id);
+      const nom=c?(c.nombres||c.alias||''):'';
+      const ruc=c?c.dni_ruc||'':'';
+      const ab=getAb(v.id);
+      const pend=parseFloat(v.total||0)-ab;
+      ventasRows.push([
+        v.id, v.fecha||'', nom, ruc, v.vendedor||'',
+        v.forma_pago||'', v.comprobante||'', v.estado||'',
+        parseFloat(v.total||0).toFixed(2),
+        parseFloat(v.descuento||0).toFixed(2),
+        ab.toFixed(2), pend.toFixed(2),
+        v.fecha_entrega||'', v.fecha_pago_real||'',
+        (v.observaciones||'').replace(/,/g,';')
+      ]);
+    });
+
+    // Hoja 2: DETALLE VENTAS
+    const detRows=[
+      ['ID','VENTA_ID','FECHA_VENTA','CLIENTE','PRODUCTO','CATEGORIA','CANTIDAD','PRECIO_BASE','PRECIO_FINAL','TOTAL','COMISION']
+    ];
+    allDets.forEach(d=>{
+      const v=ventas.find(x=>x.id===d.venta_id);
+      const c=v?clis.find(x=>x.id===v.cliente_id):null;
+      const pr=prods.find(x=>x.id===d.producto_id);
+      detRows.push([
+        d.id, d.venta_id,
+        v?v.fecha||'':'',
+        c?(c.nombres||c.alias||''):'',
+        pr?pr.nombre||'':d.producto_id||'',
+        pr?pr.categoria||'':'',
+        d.cantidad, d.precio_base, d.precio_final,
+        d.total, d.comision
+      ]);
+    });
+
+    // Hoja 3: ABONOS
+    const abonosData=await sbGet('abonos');
+    const abRows=[['ID','VENTA_ID','CLIENTE','MONTO','FECHA']];
+    abonosData.forEach(a=>{
+      const v=ventas.find(x=>x.id===a.venta_id);
+      const c=v?clis.find(x=>x.id===v.cliente_id):null;
+      abRows.push([
+        a.id, a.venta_id,
+        c?(c.nombres||c.alias||''):'',
+        a.monto, a.fecha||''
+      ]);
+    });
+
+    // Hoja 4: CLIENTES
+    const cliRows=[['ID','NOMBRES','ALIAS','RUC/DNI','TELEFONO','CORREO','DIRECCION','UBICACION']];
+    clis.forEach(c=>cliRows.push([c.id,c.nombres||'',c.alias||'',c.dni_ruc||'',c.telefono||'',c.correo||'',c.direccion||'',c.ubicacion||'']));
+
+    // Hoja 5: PRODUCTOS
+    const prodRows=[['ID','NOMBRE','CATEGORIA','PRECIO','COSTO','COMISION']];
+    prods.forEach(p=>prodRows.push([p.id,p.nombre||'',p.categoria||'',p.precio||0,p.costo||0,p.comision||0]));
+
+    // Convertir a CSV con múltiples hojas (Excel abre múltiples CSVs)
+    // Crear un ZIP con múltiples CSVs sería ideal pero sin librería
+    // Mejor: crear un CSV combinado con separadores de hoja
+    const toCSV=rows=>rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('
+');
+    
+    // Exportar como CSV único con todas las ventas (el más útil para Power BI)
+    // Power BI importa CSV directamente
+    const csvContent='﻿'+toCSV(detRows); // BOM para Excel en español
+    
+    const blob=new Blob([csvContent],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download='Frostech_Detalle_Ventas_'+new Date().toISOString().split('T')[0]+'.csv';
+    a.click(); URL.revokeObjectURL(url);
+
+    // También exportar ventas resumen
+    setTimeout(()=>{
+      const csv2='﻿'+toCSV(ventasRows);
+      const b2=new Blob([csv2],{type:'text/csv;charset=utf-8;'});
+      const u2=URL.createObjectURL(b2);
+      const a2=document.createElement('a');
+      a2.href=u2; a2.download='Frostech_Ventas_'+new Date().toISOString().split('T')[0]+'.csv';
+      a2.click(); URL.revokeObjectURL(u2);
+    },500);
+
+    toast('✅ 2 archivos CSV descargados','ok');
+  }catch(e){toast('Error: '+e.message,'err');}
+}
 
 init();
 </script>
