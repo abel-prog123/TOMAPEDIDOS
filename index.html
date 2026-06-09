@@ -414,7 +414,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="tab" onclick="dashTab('despachos')" id="dtab-despachos">Despachos</div>
   </div>
   <div class="scroll">
-    <div id="dash-content"><div class="empty"><p>Cargando...</p></div></div>
+    <div id="dash-resumen"></div>
     <div id="dash-despachos" style="display:none"></div>
   </div>
 </div>
@@ -1585,11 +1585,15 @@ function getLocation(){
 
 // ── DASHBOARD TABS ────────────────────────────────────────
 function dashTab(t){
-  ['resumen','despachos'].forEach(x=>{
-    document.getElementById('dash-'+x).style.display=x===t?'':'none';
-    document.getElementById('dtab-'+x).classList.toggle('active',x===t);
+  const ids=['resumen','despachos'];
+  ids.forEach(x=>{
+    const el=document.getElementById('dash-'+x);
+    const tab=document.getElementById('dtab-'+x);
+    if(el) el.style.display=x===t?'':'none';
+    if(tab) tab.classList.toggle('active',x===t);
   });
   if(t==='despachos') renderDespachos();
+  if(t==='resumen') renderDash();
 }
 
 // ── DESPACHOS DEL DÍA ────────────────────────────────────
@@ -1702,14 +1706,7 @@ async function exportDespachos(){
   toast('✅ PDF de despachos generado','ok');
 }
 
-// ── OVERRIDE renderDash PARA INCLUIR TABS ────────────────
-const _renderDashOld=renderDash;
-renderDash=async function(){
-  await _renderDashOld();
-  // Asegurarse que resumen esté visible
-  document.getElementById('dash-resumen').style.display='';
-  document.getElementById('dash-despachos').style.display='none';
-};
+// Override eliminado - renderDash ya usa dash-resumen directamente
 
 init();
 </script>
