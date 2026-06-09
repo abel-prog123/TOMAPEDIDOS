@@ -459,14 +459,16 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 
 <!-- STOCK -->
 <div class="screen" id="sc-stock">
-  <div class="tabs">
-    <div class="tab active" onclick="stockTab('productos')" id="stab-productos">Productos</div>
-    <div class="tab" onclick="stockTab('materias')" id="stab-materias">Mat. Primas</div>
-    <div class="tab" onclick="stockTab('recetas')" id="stab-recetas">Recetas</div>
-    <div class="tab" onclick="stockTab('movimientos')" id="stab-movimientos">Movimientos</div>
+  <div class="tabs" style="overflow-x:auto;">
+    <div class="tab active" onclick="stockTab('productos')" id="stab-productos" style="white-space:nowrap;">Productos</div>
+    <div class="tab" onclick="stockTab('graneles')" id="stab-graneles" style="white-space:nowrap;">Graneles</div>
+    <div class="tab" onclick="stockTab('materias')" id="stab-materias" style="white-space:nowrap;">Mat. Primas</div>
+    <div class="tab" onclick="stockTab('recetas')" id="stab-recetas" style="white-space:nowrap;">Recetas</div>
+    <div class="tab" onclick="stockTab('movimientos')" id="stab-movimientos" style="white-space:nowrap;">Movimientos</div>
   </div>
   <div class="scroll" id="stock-scroll">
     <div id="stock-productos"></div>
+    <div id="stock-graneles" style="display:none"></div>
     <div id="stock-materias" style="display:none"></div>
     <div id="stock-recetas" style="display:none"></div>
     <div id="stock-movimientos" style="display:none"></div>
@@ -596,6 +598,77 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 </div>
 
 
+</div>
+
+<!-- MODAL GRANEL -->
+<div class="mo" id="MGL" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit" id="MGL-tit">🧪 Nuevo Granel</div>
+    <div class="fg"><label>Nombre del granel *</label><input type="text" id="gl-nombre" class="minp" style="width:100%" placeholder="Ej: Refrigerante base 50/50"></div>
+    <div class="fg"><label>Unidad</label>
+      <select id="gl-unidad" class="msel">
+        <option value="LT">Litros</option><option value="KG">Kilogramos</option>
+        <option value="GL">Galones</option><option value="UND">Unidades</option>
+        <option value="OTRO">Otro</option>
+      </select>
+    </div>
+    <div class="fg"><label>Stock actual</label><input type="number" id="gl-stock" step="0.01" min="0" class="minp" style="width:100%" placeholder="0"></div>
+    <div class="fg"><label>Stock mínimo (alerta)</label><input type="number" id="gl-minimo" step="0.01" min="0" class="minp" style="width:100%" placeholder="0"></div>
+    <div class="fg"><label>Costo unitario (S/)</label><input type="number" id="gl-costo" step="0.01" min="0" class="minp" style="width:100%" placeholder="0.00"></div>
+    <div class="edit-actions">
+      <button class="btn-edit" onclick="saveGranel()" id="btnGL">✓ GUARDAR</button>
+      <button class="btn-del" onclick="deleteGranel()" id="btnDGL" style="display:none">🗑</button>
+    </div>
+    <div style="height:8px"></div>
+  </div>
+</div>
+
+<!-- MODAL RECETA GRANEL (materias primas → granel) -->
+<div class="mo" id="MRGL" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit">🧪 Receta del Granel</div>
+    <div class="msub" id="MRGL-sub"></div>
+    <div style="background:#fef3c7;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:.75rem;color:#92400e;font-weight:600;">
+      Ingredientes de materias primas para producir 1 unidad de este granel
+    </div>
+    <div id="receta-granel-list" style="margin-bottom:12px;"></div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <select id="recgl-mp" class="msel" style="flex:2"></select>
+      <input type="number" id="recgl-qty" placeholder="Cant." step="0.01" min="0" style="flex:1;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
+    </div>
+    <button onclick="addRecetaGranelItem()" style="width:100%;padding:10px;background:var(--w);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.85rem;font-weight:800;cursor:pointer;margin-bottom:8px;">+ Agregar materia prima</button>
+    <div style="height:8px"></div>
+  </div>
+</div>
+
+<!-- MODAL RECETA PRODUCTO CON GRANEL (granel + envases → producto) -->
+<div class="mo" id="MRPG" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit">📦 Receta con Granel</div>
+    <div class="msub" id="MRPG-sub"></div>
+    <div style="background:#eff6ff;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:.75rem;color:#1d4ed8;font-weight:600;">
+      Define qué granel y qué envases/materias se usan para producir 1 unidad de este producto
+    </div>
+    <div id="receta-prod-granel-list" style="margin-bottom:12px;"></div>
+    <!-- Agregar granel -->
+    <div style="font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;margin-bottom:6px;">Agregar Granel</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <select id="recpg-gl" class="msel" style="flex:2"></select>
+      <input type="number" id="recpg-glqty" placeholder="Cant." step="0.01" min="0" style="flex:1;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
+      <button onclick="addRecetaProdGranel('granel')" style="padding:9px 12px;background:var(--w);color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-size:.8rem;">+</button>
+    </div>
+    <!-- Agregar materia prima directa (envases, cajas, etc) -->
+    <div style="font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;margin-bottom:6px;">Agregar Envase / Material</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <select id="recpg-mp" class="msel" style="flex:2"></select>
+      <input type="number" id="recpg-mpqty" placeholder="Cant." step="0.01" min="0" style="flex:1;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
+      <button onclick="addRecetaProdGranel('mp')" style="padding:9px 12px;background:var(--p);color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-size:.8rem;">+</button>
+    </div>
+    <div style="height:8px"></div>
+  </div>
 </div>
 
 <!-- MODAL MATERIA PRIMA -->
@@ -764,9 +837,9 @@ async function uploadImg(file, path, b64, mimeType){
 
 // ── STATE ─────────────────────────────────────────────────
 let prods=[],clis=[],ventas=[],abonos=[],fPagos=[],fDesps=[];
-let materias=[],recetas=[],movimientos=[];
+let materias=[],recetas=[],movimientos=[],graneles=[],recetasGranel=[];
 let editMPId=null, movTarget=null, movTargetType=null;
-let editRecetaProdId=null;
+let editRecetaProdId=null, editGranelId=null, editRecetaGranelId=null, editRecetaPGId=null;
 let carrito=[], mProd=null, mQty=1;
 let editId=null, editTotal=0;
 let fpN=[], fdN=[], feP=[], feD=[];
@@ -775,7 +848,7 @@ let eAbonos=[];
 // ── INIT ──────────────────────────────────────────────────
 async function init(){
   try{
-    [prods,clis,ventas,abonos,fPagos,fDesps,materias,recetas,movimientos]=await Promise.all([
+    [prods,clis,ventas,abonos,fPagos,fDesps,materias,recetas,movimientos,graneles,recetasGranel]=await Promise.all([
       sbGet('productos','?order=nombre'),
       sbGet('clientes','?order=nombres'),
       sbGet('ventas','?order=created_at.desc'),
@@ -785,6 +858,8 @@ async function init(){
       sbGet('materias_primas','?order=nombre'),
       sbGet('recetas'),
       sbGet('movimientos_stock','?order=created_at.desc&limit=100'),
+      sbGet('graneles','?order=nombre'),
+      sbGet('recetas_granel'),
     ]);
     renderP(prods); renderC(clis); renderV(ventas);
     popCSel();
@@ -799,7 +874,7 @@ async function init(){
 async function refresh(){
   toast('Actualizando...','');
   try{
-    [prods,clis,ventas,abonos,fPagos,fDesps,materias,recetas,movimientos]=await Promise.all([
+    [prods,clis,ventas,abonos,fPagos,fDesps,materias,recetas,movimientos,graneles,recetasGranel]=await Promise.all([
       sbGet('productos','?order=nombre'),
       sbGet('clientes','?order=nombres'),
       sbGet('ventas','?order=created_at.desc'),
@@ -809,6 +884,8 @@ async function refresh(){
       sbGet('materias_primas','?order=nombre'),
       sbGet('recetas'),
       sbGet('movimientos_stock','?order=created_at.desc&limit=100'),
+      sbGet('graneles','?order=nombre'),
+      sbGet('recetas_granel'),
     ]);
     filterP(); filterC(); filterV();
     popCSel();
@@ -2287,13 +2364,14 @@ async function exportComisionesPDF(){
 
 // ── STOCK ─────────────────────────────────────────────────
 function stockTab(t){
-  ['productos','materias','recetas','movimientos'].forEach(x=>{
+  ['productos','graneles','materias','recetas','movimientos'].forEach(x=>{
     const el=document.getElementById('stock-'+x);
     const tab=document.getElementById('stab-'+x);
     if(el) el.style.display=x===t?'':'none';
     if(tab) tab.classList.toggle('active',x===t);
   });
   if(t==='productos') renderStockProds();
+  if(t==='graneles') renderStockGraneles();
   if(t==='materias') renderStockMaterias();
   if(t==='recetas') renderStockRecetas();
   if(t==='movimientos') renderMovimientos();
@@ -2436,7 +2514,7 @@ function editStockProd(id){
 // Abrir movimiento
 function abrirMov(tipo, id, nombre, tipoMov){
   movTarget=id;
-  movTargetType=tipo;
+  movTargetType=tipo; // 'prod', 'mp', 'granel'
   document.getElementById('MMOV-tit').textContent=tipoMov==='entrada'?'📥 Entrada de Stock':'📤 Salida de Stock';
   document.getElementById('MMOV-sub').textContent=nombre;
   document.getElementById('mov-tipo').value=tipoMov==='entrada'?'ENTRADA':'SALIDA';
@@ -2457,12 +2535,13 @@ async function saveMov(){
   try{
     const mov={id:gid(),tipo,cantidad:qty,fecha,nota:nota||null};
     if(movTargetType==='prod') mov.producto_id=movTarget;
+    else if(movTargetType==='granel') mov.materia_prima_id=movTarget; // reusar campo
     else mov.materia_prima_id=movTarget;
     await sbIns('movimientos_stock',mov);
 
     // Actualizar stock
-    const table=movTargetType==='prod'?'productos':'materias_primas';
-    const arr=movTargetType==='prod'?prods:materias;
+    const table=movTargetType==='prod'?'productos':movTargetType==='granel'?'graneles':'materias_primas';
+    const arr=movTargetType==='prod'?prods:movTargetType==='granel'?graneles:materias;
     const item=arr.find(x=>x.id===movTarget);
     if(item){
       const stockAnterior=parseFloat(item.stock_actual||0);
@@ -2473,6 +2552,7 @@ async function saveMov(){
     movimientos.unshift(mov);
     document.getElementById('MMOV').classList.remove('open');
     if(movTargetType==='prod') renderStockProds();
+    else if(movTargetType==='granel') renderStockGraneles();
     else renderStockMaterias();
     toast('✓ Movimiento registrado','ok');
   }catch(e){toast('Error: '+e.message,'err');}
@@ -2596,6 +2676,266 @@ async function deleteRecetaItem(recId,prodId){
     renderStockRecetas();
     toast('✓ Eliminado','ok');
   }catch(e){toast('Error: '+e.message,'err');}
+}
+
+// ── GRANELES ──────────────────────────────────────────────
+function renderStockGraneles(){
+  const el=document.getElementById('stock-graneles');
+  const bajos=graneles.filter(g=>parseFloat(g.stock_actual||0)<=parseFloat(g.stock_minimo||0)&&parseFloat(g.stock_minimo||0)>0);
+  let html='';
+  if(bajos.length){
+    html+=`<div class="alerta-banner"><span style="font-size:1.4rem">🚨</span><div class="alerta-banner-txt">${bajos.length} granel${bajos.length>1?'es':''} con stock bajo</div></div>`;
+  }
+  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+    <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Graneles / Semi-elaborados</span>
+    <button onclick="abrirNuevoGranel()" style="display:flex;align-items:center;gap:5px;padding:6px 12px;background:var(--w);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">+ Nuevo</button>
+  </div>`;
+  if(!graneles.length){
+    el.innerHTML=html+`<div class="empty"><p>No hay graneles registrados.<br>Un granel es una mezcla base que luego se envasa para crear productos terminados.</p></div>`;
+    return;
+  }
+  html+=graneles.map(g=>{
+    const act=parseFloat(g.stock_actual||0);
+    const min=parseFloat(g.stock_minimo||0);
+    const cls=getStockClase(act,min);
+    const nReceta=recetasGranel.filter(r=>r.granel_id===g.id).length;
+    return`<div class="stock-card ${cls}">
+      <div class="stock-info">
+        <div class="stock-nombre">${g.nombre}</div>
+        <div class="stock-unidad">${g.unidad||'LT'} · Mín: ${min} · ${nReceta} ingrediente${nReceta!==1?'s':''}</div>
+        <div class="stock-actions">
+          <button class="stock-btn entrada" onclick="abrirMov('granel','${g.id}','${g.nombre}','entrada')">+ Entrada</button>
+          <button class="stock-btn salida" onclick="abrirMov('granel','${g.id}','${g.nombre}','salida')">- Salida</button>
+          <button class="stock-btn edit" onclick="abrirRecetaGranel('${g.id}','${g.nombre.replace(/'/g,"\\'")}')">📋 Receta</button>
+          <button class="stock-btn edit" onclick="editGranel('${g.id}')">✏️</button>
+        </div>
+      </div>
+      <div class="stock-nums">
+        <div class="stock-actual ${cls}">${act}</div>
+        <div class="stock-min">stock actual</div>
+      </div>
+    </div>`;
+  }).join('');
+  el.innerHTML=html;
+}
+
+function abrirNuevoGranel(){
+  editGranelId=null;
+  ['gl-nombre','gl-stock','gl-minimo','gl-costo'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('gl-unidad').value='LT';
+  document.getElementById('MGL-tit').textContent='🧪 Nuevo Granel';
+  document.getElementById('btnDGL').style.display='none';
+  document.getElementById('MGL').classList.add('open');
+}
+
+function editGranel(id){
+  const g=graneles.find(x=>x.id===id); if(!g) return;
+  editGranelId=id;
+  document.getElementById('gl-nombre').value=g.nombre||'';
+  document.getElementById('gl-unidad').value=g.unidad||'LT';
+  document.getElementById('gl-stock').value=g.stock_actual||0;
+  document.getElementById('gl-minimo').value=g.stock_minimo||0;
+  document.getElementById('gl-costo').value=g.costo_unitario||0;
+  document.getElementById('MGL-tit').textContent='✏️ Editar Granel';
+  document.getElementById('btnDGL').style.display='block';
+  document.getElementById('MGL').classList.add('open');
+}
+
+async function saveGranel(){
+  const nombre=document.getElementById('gl-nombre').value.trim();
+  if(!nombre){toast('Ingresa el nombre','err');return;}
+  const btn=document.getElementById('btnGL');
+  btn.disabled=true;btn.textContent='⏳ Guardando...';
+  try{
+    const data={
+      nombre,
+      unidad:document.getElementById('gl-unidad').value,
+      stock_actual:parseFloat(document.getElementById('gl-stock').value)||0,
+      stock_minimo:parseFloat(document.getElementById('gl-minimo').value)||0,
+      costo_unitario:parseFloat(document.getElementById('gl-costo').value)||0,
+    };
+    if(editGranelId){
+      await sbUpd('graneles',editGranelId,data);
+      const i=graneles.findIndex(x=>x.id===editGranelId);
+      if(i>=0) Object.assign(graneles[i],data);
+    } else {
+      data.id=gid();
+      await sbIns('graneles',data);
+      graneles.push(data);
+      graneles.sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+    }
+    renderStockGraneles();
+    toast('✓ Granel guardado','ok');
+    document.getElementById('MGL').classList.remove('open');
+  }catch(e){toast('Error: '+e.message,'err');}
+  finally{btn.disabled=false;btn.textContent='✓ GUARDAR';}
+}
+
+async function deleteGranel(){
+  if(!editGranelId) return;
+  if(!confirm('¿Eliminar este granel?')) return;
+  try{
+    await sb('graneles','DELETE',null,'?id=eq.'+editGranelId);
+    graneles=graneles.filter(x=>x.id!==editGranelId);
+    renderStockGraneles();
+    toast('✓ Eliminado','ok');
+    document.getElementById('MGL').classList.remove('open');
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+
+// Receta del granel (materias primas → granel)
+function abrirRecetaGranel(granelId, granelNombre){
+  editRecetaGranelId=granelId;
+  document.getElementById('MRGL-sub').textContent=granelNombre;
+  const sel=document.getElementById('recgl-mp');
+  sel.innerHTML=materias.map(m=>`<option value="${m.id}">${m.nombre} (${m.unidad||'UND'})</option>`).join('');
+  document.getElementById('recgl-qty').value='';
+  renderRecetaGranelList(granelId);
+  document.getElementById('MRGL').classList.add('open');
+}
+
+function renderRecetaGranelList(granelId){
+  const el=document.getElementById('receta-granel-list');
+  const recs=recetasGranel.filter(r=>r.granel_id===granelId);
+  if(!recs.length){
+    el.innerHTML='<p style="font-size:.78rem;color:var(--mu);text-align:center;padding:8px 0">Sin ingredientes aún</p>';
+    return;
+  }
+  el.innerHTML=recs.map(r=>{
+    const mp=materias.find(m=>m.id===r.materia_prima_id);
+    return`<div class="abono-card">
+      <div class="abono-info">
+        <div class="abono-monto">${mp?mp.nombre:'?'}</div>
+        <div class="abono-fecha">${r.cantidad} ${mp?mp.unidad||'UND':'UND'} por unidad de granel</div>
+      </div>
+      <button class="abdel" onclick="deleteRecetaGranelItem('${r.id}','${granelId}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function addRecetaGranelItem(){
+  const mpId=document.getElementById('recgl-mp').value;
+  const qty=parseFloat(document.getElementById('recgl-qty').value);
+  if(!mpId){toast('Selecciona una materia prima','err');return;}
+  if(!qty||qty<=0){toast('Ingresa una cantidad','err');return;}
+  try{
+    const rec={id:gid(),granel_id:editRecetaGranelId,materia_prima_id:mpId,cantidad:qty};
+    await sbIns('recetas_granel',rec);
+    recetasGranel.push(rec);
+    renderRecetaGranelList(editRecetaGranelId);
+    document.getElementById('recgl-qty').value='';
+    toast('✓ Ingrediente agregado','ok');
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+
+async function deleteRecetaGranelItem(recId,granelId){
+  try{
+    await sb('recetas_granel','DELETE',null,'?id=eq.'+recId);
+    recetasGranel=recetasGranel.filter(x=>x.id!==recId);
+    renderRecetaGranelList(granelId);
+    toast('✓ Eliminado','ok');
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+
+// Receta de producto con granel (granel + envases → producto terminado)
+function abrirReceta(prodId, prodNombre){
+  // Override para usar el modal con 2 niveles
+  editRecetaPGId=prodId;
+  document.getElementById('MRPG-sub').textContent=prodNombre;
+  const selGL=document.getElementById('recpg-gl');
+  selGL.innerHTML=graneles.map(g=>`<option value="${g.id}">${g.nombre} (${g.unidad||'LT'})</option>`).join('');
+  const selMP=document.getElementById('recpg-mp');
+  selMP.innerHTML=materias.map(m=>`<option value="${m.id}">${m.nombre} (${m.unidad||'UND'})</option>`).join('');
+  document.getElementById('recpg-glqty').value='';
+  document.getElementById('recpg-mpqty').value='';
+  renderRecetaProdGranelList(prodId);
+  document.getElementById('MRPG').classList.add('open');
+}
+
+function renderRecetaProdGranelList(prodId){
+  const el=document.getElementById('receta-prod-granel-list');
+  const recs=recetas.filter(r=>r.producto_id===prodId);
+  if(!recs.length){
+    el.innerHTML='<p style="font-size:.78rem;color:var(--mu);text-align:center;padding:8px 0">Sin ingredientes aún</p>';
+    return;
+  }
+  el.innerHTML=recs.map(r=>{
+    if(r.granel_id){
+      const g=graneles.find(x=>x.id===r.granel_id);
+      return`<div class="abono-card" style="background:#fef3c7;">
+        <div class="abono-info">
+          <div class="abono-monto">🧪 ${g?g.nombre:'?'}</div>
+          <div class="abono-fecha">${r.cantidad} ${g?g.unidad||'LT':'LT'} de granel</div>
+        </div>
+        <button class="abdel" onclick="deleteRecetaPGItem('${r.id}','${prodId}')">✕</button>
+      </div>`;
+    } else {
+      const mp=materias.find(m=>m.id===r.materia_prima_id);
+      return`<div class="abono-card" style="background:#eff6ff;">
+        <div class="abono-info">
+          <div class="abono-monto">📦 ${mp?mp.nombre:'?'}</div>
+          <div class="abono-fecha">${r.cantidad} ${mp?mp.unidad||'UND':'UND'} de envase/material</div>
+        </div>
+        <button class="abdel" onclick="deleteRecetaPGItem('${r.id}','${prodId}')">✕</button>
+      </div>`;
+    }
+  }).join('');
+}
+
+async function addRecetaProdGranel(tipo){
+  var id,qty;
+  if(tipo==='granel'){
+    id=document.getElementById('recpg-gl').value;
+    qty=parseFloat(document.getElementById('recpg-glqty').value);
+  } else {
+    id=document.getElementById('recpg-mp').value;
+    qty=parseFloat(document.getElementById('recpg-mpqty').value);
+  }
+  if(!id){toast('Selecciona un elemento','err');return;}
+  if(!qty||qty<=0){toast('Ingresa una cantidad','err');return;}
+  try{
+    var rec={id:gid(),producto_id:editRecetaPGId,cantidad:qty};
+    if(tipo==='granel'){rec.granel_id=id;rec.es_granel=true;}
+    else{rec.materia_prima_id=id;rec.es_granel=false;}
+    await sbIns('recetas',rec);
+    recetas.push(rec);
+    renderRecetaProdGranelList(editRecetaPGId);
+    if(tipo==='granel') document.getElementById('recpg-glqty').value='';
+    else document.getElementById('recpg-mpqty').value='';
+    toast('✓ Agregado','ok');
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+
+async function deleteRecetaPGItem(recId,prodId){
+  try{
+    await sb('recetas','DELETE',null,'?id=eq.'+recId);
+    recetas=recetas.filter(x=>x.id!==recId);
+    renderRecetaProdGranelList(prodId);
+    toast('✓ Eliminado','ok');
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+
+// ── ACTUALIZAR renderStockRecetas PARA MOSTRAR AMBOS TIPOS ──
+function renderStockRecetas(){
+  const el=document.getElementById('stock-recetas');
+  let html=`<div style="margin-bottom:10px;font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Recetas de productos terminados</div>`;
+  html+=prods.map(p=>{
+    const recs=recetas.filter(r=>r.producto_id===p.id);
+    const granelRecs=recs.filter(r=>r.granel_id);
+    const mpRecs=recs.filter(r=>!r.granel_id&&r.materia_prima_id);
+    return`<div class="stock-card" style="flex-direction:column;align-items:flex-start;">
+      <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+        <div class="stock-nombre">${p.nombre}</div>
+        <button onclick="abrirReceta('${p.id}','${p.nombre.replace(/'/g,"\\'")}')">
+          <span style="padding:5px 10px;background:var(--p);color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;display:inline-block;">✏️ Editar</span>
+        </button>
+      </div>
+      ${granelRecs.length?granelRecs.map(r=>{const g=graneles.find(x=>x.id===r.granel_id);return`<div style="font-size:.75rem;color:#92400e;margin-top:4px;background:#fef3c7;padding:2px 8px;border-radius:6px;">🧪 ${g?g.nombre:'?'}: ${r.cantidad} ${g?g.unidad||'LT':'LT'}</div>`;}).join(''):''}
+      ${mpRecs.length?mpRecs.map(r=>{const mp=materias.find(m=>m.id===r.materia_prima_id);return`<div style="font-size:.75rem;color:#1d4ed8;margin-top:4px;background:#eff6ff;padding:2px 8px;border-radius:6px;">📦 ${mp?mp.nombre:'?'}: ${r.cantidad} ${mp?mp.unidad||'UND':'UND'}</div>`;}).join(''):''}
+      ${!recs.length?`<div style="font-size:.75rem;color:var(--mu);margin-top:4px;font-style:italic;">Sin receta definida</div>`:''}
+    </div>`;
+  }).join('');
+  el.innerHTML=html;
 }
 
 init();
