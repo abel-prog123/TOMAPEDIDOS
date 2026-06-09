@@ -302,6 +302,40 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 .kardex-cant.salida{color:var(--d);}
 .kardex-saldo{width:60px;text-align:right;flex-shrink:0;font-weight:900;color:var(--p);}
 .kardex-nota{flex:1;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* LOGIN */
+.login-vend-btn{width:100%;padding:14px;background:var(--bg);border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.95rem;font-weight:800;cursor:pointer;color:var(--txt);display:flex;align-items:center;gap:12px;transition:all .2s;}
+.login-vend-btn:active{background:var(--p);color:#fff;border-color:var(--p);}
+.login-badge{position:fixed;top:12px;right:60px;background:rgba(255,255,255,.2);color:#fff;padding:4px 10px;border-radius:10px;font-size:.7rem;font-weight:800;z-index:50;}
+/* NOTIFICACIONES */
+.notif-dot{position:absolute;top:2px;right:2px;width:8px;height:8px;background:var(--d);border-radius:50%;border:2px solid var(--p);}
+.notif-panel{position:fixed;top:var(--nh);right:0;width:min(320px,100vw);background:#fff;border-radius:0 0 0 16px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:150;display:none;max-height:70vh;overflow-y:auto;}
+.notif-panel.open{display:block;}
+.notif-item{padding:12px 16px;border-bottom:1px solid var(--bdr);cursor:pointer;}
+.notif-item:active{background:var(--bg);}
+.notif-item:last-child{border-bottom:none;}
+.notif-titulo{font-size:.82rem;font-weight:700;}
+.notif-sub{font-size:.72rem;color:var(--mu);margin-top:2px;}
+.notif-tipo{display:inline-block;padding:2px 7px;border-radius:6px;font-size:.65rem;font-weight:800;margin-bottom:4px;}
+.notif-tipo.vencido{background:#fee2e2;color:#991b1b;}
+.notif-tipo.bajo{background:#fef3c7;color:#92400e;}
+.notif-tipo.nuevo{background:#dbeafe;color:#1d4ed8;}
+/* BÚSQUEDA GLOBAL */
+.busq-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;display:none;flex-direction:column;}
+.busq-overlay.open{display:flex;}
+.busq-header{background:#fff;padding:12px 16px;display:flex;gap:10px;align-items:center;}
+.busq-input{flex:1;padding:10px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.95rem;outline:none;}
+.busq-input:focus{border-color:var(--p);}
+.busq-results{flex:1;background:#fff;overflow-y:auto;margin-top:1px;}
+.busq-section{padding:8px 16px 4px;font-size:.68rem;font-weight:800;color:var(--mu);text-transform:uppercase;background:var(--bg);}
+.busq-item{padding:10px 16px;border-bottom:1px solid var(--bdr);cursor:pointer;display:flex;align-items:center;gap:10px;}
+.busq-item:active{background:var(--bg);}
+.busq-icon{font-size:1.2rem;flex-shrink:0;}
+.busq-info{flex:1;min-width:0;}
+.busq-nombre{font-size:.82rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.busq-meta{font-size:.7rem;color:var(--mu);}
+/* OFFLINE */
+.offline-banner{position:fixed;bottom:var(--nh);left:0;right:0;background:var(--w);color:#fff;text-align:center;padding:8px;font-size:.78rem;font-weight:800;z-index:200;display:none;}
+.offline-banner.show{display:block;}
 .mov-info{flex:1;min-width:0;}
 .mov-nombre{font-size:.8rem;font-weight:700;}
 .mov-meta{font-size:.68rem;color:var(--mu);margin-top:2px;}
@@ -317,6 +351,23 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 </style>
 </head>
 <body>
+
+<!-- LOGIN -->
+<div id="LOGIN" style="position:fixed;inset:0;background:var(--p);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9998;padding:24px;">
+  <div style="font-size:3rem;margin-bottom:12px;">🚚</div>
+  <h1 style="color:#fff;font-size:1.6rem;font-weight:900;margin-bottom:4px;">TomaPedidos</h1>
+  <p style="color:rgba(255,255,255,.8);font-size:.88rem;margin-bottom:32px;">Frostech</p>
+  <div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,.2);">
+    <div style="font-size:.8rem;font-weight:800;color:var(--mu);text-transform:uppercase;margin-bottom:12px;">¿Quién eres?</div>
+    <div id="login-vendedores" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--bdr);">
+      <div style="font-size:.75rem;font-weight:800;color:var(--mu);margin-bottom:8px;">O ingresa como:</div>
+      <button onclick="loginComo('GERENTE')" style="width:100%;padding:12px;background:#0f172a;color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.88rem;font-weight:800;cursor:pointer;">
+        👑 Gerente (ver todo)
+      </button>
+    </div>
+  </div>
+</div>
 
 <div class="lscreen" id="LS">
   <div class="spin"></div>
@@ -335,10 +386,14 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 </div>
 
 <div class="topbar">
-  <h1>🚚 Frostech · TomaPedidos</h1>
+  <h1 style="cursor:pointer;" onclick="cerrarSesion()">🚚 Frostech <span id="sesion-badge" style="font-size:.65rem;opacity:.7;font-weight:600;"></span></h1>
   <div class="topbar-actions">
-    <button class="ib" onclick="refresh()" title="Actualizar">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+    <button class="ib" onclick="abrirBusqueda()" title="Buscar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    </button>
+    <button class="ib" onclick="toggleNotif()" title="Notificaciones" style="position:relative;" id="btnNotif">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>
+      <span class="notif-dot" id="notif-dot" style="display:none"></span>
     </button>
     <button class="ib" onclick="accionPlus()" title="Agregar" id="btnPlus">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -958,6 +1013,31 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
   </div>
 </div>
 
+<!-- NOTIFICACIONES -->
+<div class="notif-panel" id="notif-panel">
+  <div style="padding:12px 16px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;">
+    <span style="font-size:.85rem;font-weight:800;">Notificaciones</span>
+    <button onclick="toggleNotif()" style="background:none;border:none;cursor:pointer;color:var(--mu);font-size:.8rem;">✕</button>
+  </div>
+  <div id="notif-list"></div>
+</div>
+
+<!-- BÚSQUEDA GLOBAL -->
+<div class="busq-overlay" id="busq-overlay">
+  <div class="busq-header">
+    <input type="text" class="busq-input" id="busq-input" placeholder="Buscar ventas, clientes, productos..." oninput="buscarGlobal(this.value)" autofocus>
+    <button onclick="cerrarBusqueda()" style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:var(--mu);">✕</button>
+  </div>
+  <div class="busq-results" id="busq-results">
+    <div class="empty"><p>Escribe para buscar...</p></div>
+  </div>
+</div>
+
+<!-- OFFLINE BANNER -->
+<div class="offline-banner" id="offline-banner">
+  📵 Sin conexión — los pedidos se guardarán localmente
+</div>
+
 <div class="toast" id="T"></div>
 
 <script>
@@ -998,6 +1078,9 @@ async function uploadImg(file, path, b64, mimeType){
 
 // ── STATE ─────────────────────────────────────────────────
 let prods=[],clis=[],ventas=[],abonos=[],fPagos=[],fDesps=[];
+let sesion={vendedor:'',rol:''}; // rol: 'vendedor' o 'gerente'
+let pendientesOffline=[];
+let isOnline=navigator.onLine;
 let materias=[],recetas=[],movimientos=[],graneles=[],recetasGranel=[];
 let editMPId=null, movTarget=null, movTargetType=null;
 let editRecetaProdId=null, editGranelId=null, editRecetaGranelId=null, editRecetaPGId=null;
@@ -3996,7 +4079,465 @@ function descargarPDFventa(ventaId){
   }
 }
 
-init();
+// ═══════════════════════════════════════════════════════════
+// 1. LOGIN / SESIÓN
+// ═══════════════════════════════════════════════════════════
+const VENDEDORES=[
+  {nombre:'MOISES',emoji:'👨‍💼',color:'#0ea5e9'},
+  {nombre:'SONIA',emoji:'👩‍💼',color:'#8b5cf6'},
+  {nombre:'CRISTIAN',emoji:'👨‍🔬',color:'#10b981'},
+  {nombre:'JHOSY',emoji:'👩‍💻',color:'#f59e0b'},
+];
+
+function initLogin(){
+  const guardada=localStorage.getItem('frostech_sesion');
+  if(guardada){
+    try{
+      const s=JSON.parse(guardada);
+      sesion=s;
+      mostrarApp();
+      return;
+    }catch(e){}
+  }
+  // Mostrar pantalla de login
+  const container=document.getElementById('login-vendedores');
+  container.innerHTML=VENDEDORES.map(v=>`
+    <button class="login-vend-btn" onclick="loginComo('${v.nombre}')" style="border-left:4px solid ${v.color};">
+      <span style="font-size:1.4rem;">${v.emoji}</span>
+      <span>${v.nombre}</span>
+    </button>`).join('');
+  document.getElementById('LOGIN').style.display='flex';
+}
+
+function loginComo(quien){
+  sesion={
+    vendedor:quien,
+    rol:quien==='GERENTE'?'gerente':'vendedor'
+  };
+  localStorage.setItem('frostech_sesion',JSON.stringify(sesion));
+  document.getElementById('LOGIN').style.display='none';
+  mostrarApp();
+}
+
+function mostrarApp(){
+  const badge=document.getElementById('sesion-badge');
+  if(badge) badge.textContent=sesion.rol==='gerente'?'👑 Gerente':'· '+sesion.vendedor;
+  // Pre-seleccionar vendedor en formulario
+  const selV=document.getElementById('sel-v');
+  if(selV&&sesion.rol==='vendedor'){
+    selV.value=sesion.vendedor;
+  }
+  init();
+}
+
+function cerrarSesion(){
+  if(!confirm('¿Cambiar de usuario?')) return;
+  localStorage.removeItem('frostech_sesion');
+  sesion={vendedor:'',rol:''};
+  location.reload();
+}
+
+// ═══════════════════════════════════════════════════════════
+// 2. FILTRO POR VENDEDOR EN VENTAS
+// ═══════════════════════════════════════════════════════════
+const _renderVOld=renderV;
+renderV=function(list){
+  // Si es vendedor (no gerente), filtrar solo sus ventas
+  var filtradas=list;
+  if(sesion.rol==='vendedor'&&sesion.vendedor){
+    filtradas=list.filter(function(v){
+      return(v.vendedor||'').toUpperCase()===sesion.vendedor.toUpperCase();
+    });
+  }
+  _renderVOld(filtradas);
+};
+
+// ═══════════════════════════════════════════════════════════
+// 3. NOTIFICACIONES
+// ═══════════════════════════════════════════════════════════
+function calcularNotificaciones(){
+  var notifs=[];
+  var hoyStr=hoy();
+
+  // Pagos vencidos
+  ventas.forEach(function(v){
+    if(!v.fecha_estimada_pago) return;
+    var ab=getAb(v.id);
+    var total=parseFloat(v.total||0);
+    if(total>ab&&v.fecha_estimada_pago<hoyStr&&v.estado!=='COMPLETADO'&&v.estado!=='ANULADO'){
+      var c=clis.find(function(x){return x.id===v.cliente_id;});
+      var nom=c?(c.nombres||c.alias||'?'):'?';
+      var diasVenc=Math.floor((new Date(hoyStr)-new Date(v.fecha_estimada_pago))/86400000);
+      notifs.push({
+        tipo:'vencido',
+        titulo:'Pago vencido: '+nom,
+        sub:'Venció hace '+diasVenc+' día'+(diasVenc!==1?'s':'')+' · Debe S/ '+(total-ab).toFixed(2),
+        accion:function(){goS('ventas');}
+      });
+    }
+  });
+
+  // Stock bajo - productos
+  prods.forEach(function(p){
+    var act=parseFloat(p.stock_actual||0);
+    var min=parseFloat(p.stock_minimo||0);
+    if(min>0&&act<=min){
+      notifs.push({
+        tipo:'bajo',
+        titulo:'Stock bajo: '+p.nombre,
+        sub:'Stock actual: '+act+' '+( p.unidad||'UND')+' (mín: '+min+')',
+        accion:function(){goS('stock');}
+      });
+    }
+  });
+
+  // Stock bajo - materias primas
+  materias.forEach(function(m){
+    var act=parseFloat(m.stock_actual||0);
+    var min=parseFloat(m.stock_minimo||0);
+    if(min>0&&act<=min){
+      notifs.push({
+        tipo:'bajo',
+        titulo:'Mat. prima baja: '+m.nombre,
+        sub:'Stock: '+act+' '+(m.unidad||'UND')+' (mín: '+min+')',
+        accion:function(){goS('stock');}
+      });
+    }
+  });
+
+  return notifs;
+}
+
+var notifAbierto=false;
+function toggleNotif(){
+  var panel=document.getElementById('notif-panel');
+  notifAbierto=!notifAbierto;
+  panel.classList.toggle('open',notifAbierto);
+  if(notifAbierto) renderNotificaciones();
+}
+
+function renderNotificaciones(){
+  var notifs=calcularNotificaciones();
+  var dot=document.getElementById('notif-dot');
+  if(dot) dot.style.display=notifs.length?'block':'none';
+  var el=document.getElementById('notif-list');
+  if(!notifs.length){
+    el.innerHTML='<div class="empty" style="padding:24px"><p>Sin notificaciones pendientes ✅</p></div>';
+    return;
+  }
+  el.innerHTML=notifs.map(function(n,i){
+    return`<div class="notif-item" onclick="notifAccion(${i})">
+      <span class="notif-tipo ${n.tipo}">${n.tipo==='vencido'?'💰 PAGO VENCIDO':n.tipo==='bajo'?'📦 STOCK BAJO':'🔔 NUEVO'}</span>
+      <div class="notif-titulo">${n.titulo}</div>
+      <div class="notif-sub">${n.sub}</div>
+    </div>`;
+  }).join('');
+}
+
+var _notifAcciones=[];
+function notifAccion(i){
+  var notifs=calcularNotificaciones();
+  _notifAcciones=notifs;
+  if(notifs[i]&&notifs[i].accion){
+    notifs[i].accion();
+    toggleNotif();
+  }
+}
+
+function actualizarDot(){
+  var notifs=calcularNotificaciones();
+  var dot=document.getElementById('notif-dot');
+  if(dot) dot.style.display=notifs.length?'block':'none';
+}
+
+// ═══════════════════════════════════════════════════════════
+// 4. BÚSQUEDA GLOBAL
+// ═══════════════════════════════════════════════════════════
+function abrirBusqueda(){
+  document.getElementById('busq-overlay').classList.add('open');
+  setTimeout(function(){document.getElementById('busq-input').focus();},100);
+}
+
+function cerrarBusqueda(){
+  document.getElementById('busq-overlay').classList.remove('open');
+  document.getElementById('busq-input').value='';
+  document.getElementById('busq-results').innerHTML='<div class="empty"><p>Escribe para buscar...</p></div>';
+}
+
+function buscarGlobal(q){
+  q=(q||'').toLowerCase().trim();
+  var el=document.getElementById('busq-results');
+  if(!q||q.length<2){
+    el.innerHTML='<div class="empty"><p>Escribe al menos 2 caracteres...</p></div>';
+    return;
+  }
+  var html='';
+  var total=0;
+
+  // Buscar en clientes
+  var rClis=clis.filter(function(c){
+    return(c.nombres||'').toLowerCase().includes(q)||
+      (c.alias||'').toLowerCase().includes(q)||
+      (c.dni_ruc||'').includes(q)||
+      (c.telefono||'').includes(q);
+  }).slice(0,5);
+  if(rClis.length){
+    html+='<div class="busq-section">👥 Clientes</div>';
+    html+=rClis.map(function(c){
+      return`<div class="busq-item" onclick="cerrarBusqueda();goS('clientes')">
+        <span class="busq-icon">👤</span>
+        <div class="busq-info">
+          <div class="busq-nombre">${c.nombres||c.alias||'?'}</div>
+          <div class="busq-meta">${c.dni_ruc||''} ${c.telefono?'· '+c.telefono:''}</div>
+        </div>
+      </div>`;
+    }).join('');
+    total+=rClis.length;
+  }
+
+  // Buscar en productos
+  var rProds=prods.filter(function(p){
+    return(p.nombre||'').toLowerCase().includes(q)||
+      (p.categoria||'').toLowerCase().includes(q);
+  }).slice(0,5);
+  if(rProds.length){
+    html+='<div class="busq-section">📦 Productos</div>';
+    html+=rProds.map(function(p){
+      return`<div class="busq-item" onclick="cerrarBusqueda();goS('pedido')">
+        <span class="busq-icon">${getEmoji(p.categoria)}</span>
+        <div class="busq-info">
+          <div class="busq-nombre">${p.nombre}</div>
+          <div class="busq-meta">${p.categoria||''} · S/ ${parseFloat(p.precio||0).toFixed(2)}</div>
+        </div>
+      </div>`;
+    }).join('');
+    total+=rProds.length;
+  }
+
+  // Buscar en ventas
+  var rVentas=ventas.filter(function(v){
+    var c=clis.find(function(x){return x.id===v.cliente_id;});
+    var nom=c?(c.nombres||c.alias||''):'';
+    return nom.toLowerCase().includes(q)||
+      (v.vendedor||'').toLowerCase().includes(q)||
+      (v.observaciones||'').toLowerCase().includes(q)||
+      (v.forma_pago||'').toLowerCase().includes(q)||
+      (v.estado||'').toLowerCase().includes(q);
+  }).slice(0,8);
+  if(rVentas.length){
+    html+='<div class="busq-section">💰 Ventas</div>';
+    html+=rVentas.map(function(v){
+      var c=clis.find(function(x){return x.id===v.cliente_id;});
+      var nom=c?(c.nombres||c.alias||'?'):'?';
+      var vid=v.id;
+      return`<div class="busq-item" onclick="cerrarBusqueda();goS('ventas');setTimeout(function(){abrirE('${vid}');},500);">
+        <span class="busq-icon">🧾</span>
+        <div class="busq-info">
+          <div class="busq-nombre">${nom}</div>
+          <div class="busq-meta">${v.fecha||''} · S/ ${parseFloat(v.total||0).toFixed(2)} · ${v.estado||''} · ${v.vendedor||''}</div>
+        </div>
+        <span class="ebadge e${v.estado||'ENVIADO'}" style="font-size:.6rem;flex-shrink:0;">${v.estado||'ENVIADO'}</span>
+      </div>`;
+    }).join('');
+    total+=rVentas.length;
+  }
+
+  if(!total){
+    el.innerHTML='<div class="empty"><p>Sin resultados para "'+q+'"</p></div>';
+    return;
+  }
+  el.innerHTML=html;
+}
+
+// ═══════════════════════════════════════════════════════════
+// 5. MODO OFFLINE
+// ═══════════════════════════════════════════════════════════
+function initOfflineDetection(){
+  window.addEventListener('online',function(){
+    isOnline=true;
+    document.getElementById('offline-banner').classList.remove('show');
+    sincronizarPendientes();
+  });
+  window.addEventListener('offline',function(){
+    isOnline=false;
+    document.getElementById('offline-banner').classList.add('show');
+  });
+  if(!navigator.onLine){
+    document.getElementById('offline-banner').classList.add('show');
+  }
+}
+
+function guardarPendienteOffline(pedido){
+  var pendientes=JSON.parse(localStorage.getItem('frostech_offline')||'[]');
+  pedido._id=gid();
+  pedido._timestamp=Date.now();
+  pendientes.push(pedido);
+  localStorage.setItem('frostech_offline',JSON.stringify(pendientes));
+  toast('📵 Guardado localmente — se sincronizará cuando haya conexión','ok');
+}
+
+async function sincronizarPendientes(){
+  var pendientes=JSON.parse(localStorage.getItem('frostech_offline')||'[]');
+  if(!pendientes.length) return;
+  toast('🔄 Sincronizando '+pendientes.length+' pedido(s)...','');
+  var exito=0;
+  var errores=[];
+  for(var i=0;i<pendientes.length;i++){
+    var p=pendientes[i];
+    try{
+      await sbIns('ventas',p.venta);
+      for(var j=0;j<(p.detalle||[]).length;j++){
+        await sbIns('detalle_ventas',p.detalle[j]);
+      }
+      for(var k=0;k<(p.abonos||[]).length;k++){
+        await sbIns('abonos',p.abonos[k]);
+      }
+      exito++;
+    }catch(e){
+      errores.push(p._id);
+    }
+  }
+  // Mantener solo los que fallaron
+  var restantes=pendientes.filter(function(p){return errores.includes(p._id);});
+  localStorage.setItem('frostech_offline',JSON.stringify(restantes));
+  if(exito>0){
+    toast('✅ '+exito+' pedido(s) sincronizado(s)','ok');
+    await Promise.all([loadV(),loadA()]);
+    renderV(ventas);
+  }
+  if(errores.length){
+    toast('⚠️ '+errores.length+' pedido(s) no se pudieron sincronizar','err');
+  }
+}
+
+// ── Override guardar para modo offline ──
+const _guardarOld=guardar;
+guardar=async function(){
+  if(!isOnline){
+    // Guardar localmente
+    if(!carrito.length){toast('Agrega al menos un producto','err');return;}
+    var cli=document.getElementById('sel-c').value;
+    if(!cli){toast('Selecciona un cliente','err');return;}
+    var pago=document.getElementById('sel-p').value;
+    if(!pago){toast('Selecciona forma de pago','err');return;}
+
+    var vid=gid();
+    var now=new Date();
+    var sub=carrito.reduce(function(a,b){return a+b.precio*b.qty;},0);
+    var desc=carrito.reduce(function(a,b){return a+(b.precioBase-b.precio)*b.qty;},0);
+    var vend=document.getElementById('sel-v').value;
+    var obs=document.getElementById('txt-obs').value;
+    var comp=document.getElementById('sel-comp').value;
+    var fep=document.getElementById('inp-fep').value;
+    var fe=document.getElementById('inp-fe').value;
+    var ab0=parseFloat(document.getElementById('inp-ab0').value)||0;
+    var ab0f=document.getElementById('inp-ab0f').value;
+
+    var ventaObj={
+      id:vid,cliente_id:cli,vendedor:vend,forma_pago:pago,
+      comprobante:comp||null,observaciones:obs||null,
+      estado:'ENVIADO',proceso:'VENTA',total:sub,descuento:desc,
+      fecha_estimada_pago:fep||null,fecha_entrega:fe||null,
+      fecha:now.toISOString().split('T')[0]
+    };
+    var detalleArr=carrito.map(function(item){
+      return{id:gid(),venta_id:vid,producto_id:item.id,
+        cantidad:item.qty,precio_base:item.precioBase,
+        precio_final:item.precio,total:item.precio*item.qty,
+        comision:item.comision*item.qty};
+    });
+    var abonosArr=ab0>0?[{id:gid(),venta_id:vid,monto:ab0,fecha:ab0f||hoy()}]:[];
+
+    guardarPendienteOffline({venta:ventaObj,detalle:detalleArr,abonos:abonosArr});
+
+    // Agregar a lista local
+    ventas.unshift(ventaObj);
+    renderV(ventas);
+    nuevoPedido();
+    return;
+  }
+  await _guardarOld();
+};
+
+// ═══════════════════════════════════════════════════════════
+// 6. CIERRE MENSUAL DE STOCK
+// ═══════════════════════════════════════════════════════════
+async function cierreMensual(){
+  if(!confirm('¿Guardar snapshot del inventario actual? Esto registra el estado del stock de hoy.')) return;
+  var now=new Date();
+  var periodo=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  var snapshot={
+    periodo,fecha:hoy(),
+    productos:prods.map(function(p){return{id:p.id,nombre:p.nombre,stock:p.stock_actual,costo:p.costo,valor:parseFloat(p.stock_actual||0)*parseFloat(p.costo||0)};}),
+    graneles:graneles.map(function(g){return{id:g.id,nombre:g.nombre,stock:g.stock_actual,costo:g.costo_unitario,valor:parseFloat(g.stock_actual||0)*parseFloat(g.costo_unitario||0)};}),
+    materias:materias.map(function(m){return{id:m.id,nombre:m.nombre,stock:m.stock_actual,costo:m.costo_unitario,valor:parseFloat(m.stock_actual||0)*parseFloat(m.costo_unitario||0)};})
+  };
+  var cierres=JSON.parse(localStorage.getItem('frostech_cierres')||'[]');
+  cierres=cierres.filter(function(c){return c.periodo!==periodo;}); // reemplazar si existe
+  cierres.push(snapshot);
+  localStorage.setItem('frostech_cierres',JSON.stringify(cierres));
+
+  // Exportar como CSV
+  exportarCierreMensual(snapshot);
+  toast('✅ Cierre mensual guardado y exportado','ok');
+}
+
+function exportarCierreMensual(snapshot){
+  var NL=String.fromCharCode(10);
+  function toCSV(rows){
+    return rows.map(function(r){
+      return r.map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}).join(',');
+    }).join(NL);
+  }
+  var rows=[['PERIODO','TIPO','NOMBRE','STOCK','COSTO_UNIT','VALOR_TOTAL']];
+  snapshot.productos.forEach(function(p){rows.push([snapshot.periodo,'PRODUCTO',p.nombre,p.stock,p.costo,parseFloat(p.valor||0).toFixed(2)]);});
+  snapshot.graneles.forEach(function(g){rows.push([snapshot.periodo,'GRANEL',g.nombre,g.stock,g.costo,parseFloat(g.valor||0).toFixed(2)]);});
+  snapshot.materias.forEach(function(m){rows.push([snapshot.periodo,'MATERIA PRIMA',m.nombre,m.stock,m.costo,parseFloat(m.valor||0).toFixed(2)]);});
+  var tTotal=(snapshot.productos.reduce(function(s,p){return s+parseFloat(p.valor||0);},0)+
+    snapshot.graneles.reduce(function(s,g){return s+parseFloat(g.valor||0);},0)+
+    snapshot.materias.reduce(function(s,m){return s+parseFloat(m.valor||0);},0));
+  rows.push([snapshot.periodo,'TOTAL','','','',tTotal.toFixed(2)]);
+  var bom='﻿';
+  var blob=new Blob([bom+toCSV(rows)],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;
+  a.download='CierreMensual_Frostech_'+snapshot.periodo+'.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Agregar botón cierre mensual en resumen de stock
+const _renderStockResumenOld=renderStockResumen;
+renderStockResumen=function(){
+  _renderStockResumenOld();
+  var el=document.getElementById('stock-resumen');
+  if(el){
+    var btn=document.createElement('button');
+    btn.textContent='📅 Cierre mensual de inventario';
+    btn.style.cssText='width:100%;padding:12px;background:#0f172a;color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.85rem;font-weight:800;cursor:pointer;margin-bottom:8px;';
+    btn.onclick=cierreMensual;
+    el.insertBefore(btn,el.lastElementChild);
+  }
+};
+
+// ── INICIALIZACIÓN FINAL ──────────────────────────────────
+const _initOld=init;
+init=async function(){
+  initOfflineDetection();
+  await _initOld();
+  actualizarDot();
+  // Pre-seleccionar vendedor si hay sesión
+  if(sesion.rol==='vendedor'&&sesion.vendedor){
+    var selV=document.getElementById('sel-v');
+    if(selV) selV.value=sesion.vendedor;
+  }
+  // Sincronizar pendientes offline si hay conexión
+  if(isOnline) await sincronizarPendientes();
+};
+
+// Arrancar con login
+initLogin();
 </script>
 </body>
 </html>
