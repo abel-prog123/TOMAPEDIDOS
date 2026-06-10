@@ -307,6 +307,13 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 .kardex-cant.salida{color:var(--d);}
 .kardex-saldo{width:60px;text-align:right;flex-shrink:0;font-weight:900;color:var(--p);}
 .kardex-nota{flex:1;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* PROVEEDORES */
+.prov-card{background:#fff;border-radius:14px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1.5px solid var(--bdr);}
+.prov-nombre{font-size:.88rem;font-weight:800;margin-bottom:4px;}
+.prov-dato{font-size:.75rem;color:var(--mu);font-weight:600;margin-top:3px;display:flex;align-items:center;gap:6px;}
+.prov-mps{background:var(--bg);border-radius:8px;padding:8px 10px;margin-top:8px;}
+.prov-mp-item{font-size:.72rem;color:var(--mu);padding:3px 0;border-bottom:1px solid var(--bdr);}
+.prov-mp-item:last-child{border-bottom:none;}
 /* LOGIN */
 .login-vend-btn{width:100%;padding:14px;background:var(--bg);border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.95rem;font-weight:800;cursor:pointer;color:var(--txt);display:flex;align-items:center;gap:12px;transition:all .2s;}
 .login-vend-btn:active{background:var(--p);color:#fff;border-color:var(--p);}
@@ -571,6 +578,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="tab" onclick="stockTab('materias')" id="stab-materias" style="white-space:nowrap;">Mat. Primas</div>
     <div class="tab" onclick="stockTab('recetas')" id="stab-recetas" style="white-space:nowrap;">Recetas</div>
     <div class="tab" onclick="stockTab('movimientos')" id="stab-movimientos" style="white-space:nowrap;">Movimientos</div>
+    <div class="tab" onclick="stockTab('proveedores')" id="stab-proveedores" style="white-space:nowrap;">Proveedores</div>
   </div>
   <div class="scroll" id="stock-scroll">
     <div id="stock-resumen"></div>
@@ -579,6 +587,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div id="stock-materias" style="display:none"></div>
     <div id="stock-recetas" style="display:none"></div>
     <div id="stock-movimientos" style="display:none"></div>
+    <div id="stock-proveedores" style="display:none"></div>
   </div>
 </div>
 
@@ -860,6 +869,31 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
   </div>
 </div>
 
+<!-- MODAL PROVEEDOR -->
+<div class="mo" id="MPROV" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit" id="MPROV-tit">🏭 Nuevo Proveedor</div>
+    <div class="fg"><label>Nombre / Razón social *</label>
+      <input type="text" id="prov-nombre" class="minp" style="width:100%" placeholder="Ej: Quimicos SAC"></div>
+    <div class="fg"><label>RUC</label>
+      <input type="text" id="prov-ruc" class="minp" style="width:100%" placeholder="20xxxxxxxxx"></div>
+    <div class="fg"><label>Teléfono / Celular</label>
+      <input type="text" id="prov-tel" class="minp" style="width:100%" placeholder="9xxxxxxxx"></div>
+    <div class="fg"><label>Correo</label>
+      <input type="email" id="prov-email" class="minp" style="width:100%" placeholder="ventas@empresa.com"></div>
+    <div class="fg"><label>Persona de contacto</label>
+      <input type="text" id="prov-contacto" class="minp" style="width:100%" placeholder="Ej: Juan Pérez"></div>
+    <div class="fg"><label>Dirección</label>
+      <textarea id="prov-dir" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;height:60px;resize:none;outline:none;" placeholder="Av. ..."></textarea></div>
+    <div class="edit-actions">
+      <button class="btn-edit" onclick="saveProveedor()" id="btnPROV">✓ GUARDAR</button>
+      <button class="btn-del" onclick="deleteProveedor()" id="btnDPROV" style="display:none">🗑</button>
+    </div>
+    <div style="height:8px"></div>
+  </div>
+</div>
+
 <!-- MODAL GRANEL -->
 <div class="mo" id="MGL" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal">
@@ -963,7 +997,17 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     </div>
     <div class="fg"><label>Stock actual</label><input type="number" id="mp2-stock" step="0.01" min="0" class="minp" style="width:100%" placeholder="0"></div>
     <div class="fg"><label>Stock mínimo (alerta)</label><input type="number" id="mp2-minimo" step="0.01" min="0" class="minp" style="width:100%" placeholder="0"></div>
-    <div class="fg"><label>Costo unitario (S/)</label><input type="number" id="mp2-costo" step="0.01" min="0" class="minp" style="width:100%" placeholder="0.00"></div>
+    <div class="fg"><label>Costo unitario (S/)</label>
+      <input type="number" id="mp2-costo" step="0.01" min="0" class="minp" style="width:100%" placeholder="0.00"></div>
+    <div class="fg"><label>Código / SKU (opcional)</label>
+      <input type="text" id="mp2-codigo" class="minp" style="width:100%" placeholder="Ej: MP001"></div>
+    <div class="fg"><label>Proveedor principal</label>
+      <select id="mp2-proveedor" class="msel">
+        <option value="">-- Sin proveedor --</option>
+      </select>
+    </div>
+    <div class="fg"><label>Tiempo de entrega</label>
+      <input type="text" id="mp2-entrega" class="minp" style="width:100%" placeholder="Ej: 3-5 días hábiles"></div>
     <div class="edit-actions">
       <button class="btn-edit" onclick="saveMP2()" id="btnMMP">✓ GUARDAR</button>
       <button class="btn-del" onclick="deleteMP2()" id="btnDMP" style="display:none">🗑</button>
@@ -1164,7 +1208,7 @@ let prods=[],clis=[],ventas=[],abonos=[],fPagos=[],fDesps=[];
 let sesion={vendedor:'',rol:''}; // rol: 'vendedor' o 'gerente'
 let pendientesOffline=[];
 let isOnline=navigator.onLine;
-let materias=[],recetas=[],movimientos=[],graneles=[],recetasGranel=[];
+let materias=[],recetas=[],movimientos=[],graneles=[],recetasGranel=[],proveedores=[];
 let editMPId=null, movTarget=null, movTargetType=null;
 let editRecetaProdId=null, editGranelId=null, editRecetaGranelId=null, editRecetaPGId=null;
 let carrito=[], mProd=null, mQty=1;
@@ -1175,7 +1219,7 @@ let eAbonos=[];
 // ── INIT ──────────────────────────────────────────────────
 async function init(){
   try{
-    [prods,clis,ventas,abonos,fPagos,fDesps,materias,recetas,movimientos,graneles,recetasGranel]=await Promise.all([
+    [prods,clis,ventas,abonos,fPagos,fDesps,materias,recetas,movimientos,graneles,recetasGranel,proveedores]=await Promise.all([
       sbGet('productos','?order=nombre'),
       sbGet('clientes','?order=nombres'),
       sbGet('ventas','?order=created_at.desc'),
@@ -1187,7 +1231,9 @@ async function init(){
       sbGet('movimientos_stock','?order=created_at.desc&limit=100'),
       sbGet('graneles','?order=nombre'),
       sbGet('recetas_granel'),
+      sbGet('proveedores','?order=nombre'),
     ]);
+
     renderP(prods); renderC(clis); renderV(ventas);
     popCSel();
     initFN();
@@ -1201,7 +1247,7 @@ async function init(){
 async function refresh(){
   toast('Actualizando...','');
   try{
-    [prods,clis,ventas,abonos,fPagos,fDesps,materias,recetas,movimientos,graneles,recetasGranel]=await Promise.all([
+    [prods,clis,ventas,abonos,fPagos,fDesps,materias,recetas,movimientos,graneles,recetasGranel,proveedores]=await Promise.all([
       sbGet('productos','?order=nombre'),
       sbGet('clientes','?order=nombres'),
       sbGet('ventas','?order=created_at.desc'),
@@ -1213,7 +1259,9 @@ async function refresh(){
       sbGet('movimientos_stock','?order=created_at.desc&limit=100'),
       sbGet('graneles','?order=nombre'),
       sbGet('recetas_granel'),
+      sbGet('proveedores','?order=nombre'),
     ]);
+
     filterP(); filterC(); filterV();
     popCSel();
     toast('✓ Actualizado','ok');
@@ -2731,6 +2779,7 @@ function stockTab(t){
   if(t==='materias') renderStockMaterias();
   if(t==='recetas') renderStockRecetas();
   if(t==='movimientos') renderMovimientos();
+  if(t==='proveedores') renderProveedores();
 }
 
 function getStockClase(actual,minimo){
@@ -2796,7 +2845,8 @@ function renderStockMaterias(){
     return`<div class="stock-card ${cls}">
       <div class="stock-info">
         <div class="stock-nombre">${m.nombre}</div>
-        <div class="stock-unidad">${m.unidad||'UND'} · Mín: ${min} · S/ ${parseFloat(m.costo_unitario||0).toFixed(2)}/u</div>
+        <div class="stock-unidad">${m.unidad||'UND'} · Mín: ${min} · S/ ${parseFloat(m.costo_unitario||0).toFixed(2)}/u${(()=>{const pv=proveedores.find(p=>p.id===m.proveedor_id);return pv?' · 🏭 '+pv.nombre:'';})()}</div>
+        ${m.codigo?`<div style="font-size:.65rem;color:var(--p);font-weight:700;margin-top:2px;">SKU: ${m.codigo}</div>`:''}
         <div class="stock-actions">
           <button class="stock-btn entrada" onclick="abrirMov('mp','${m.id}','${m.nombre}','entrada')">+ Entrada</button>
           <button class="stock-btn salida" onclick="abrirMov('mp','${m.id}','${m.nombre}','salida')">- Salida</button>
@@ -2919,8 +2969,9 @@ async function saveMov(){
 // Nueva/Editar Materia Prima
 function abrirNuevaMP(){
   editMPId=null;
-  ['mp2-nombre','mp2-stock','mp2-minimo','mp2-costo'].forEach(id=>document.getElementById(id).value='');
+  ['mp2-nombre','mp2-stock','mp2-minimo','mp2-costo','mp2-codigo','mp2-entrega'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('mp2-unidad').value='UND';
+  poblarSelectProveedores('mp2-proveedor','');
   document.getElementById('MMP-tit').textContent='📦 Nueva Materia Prima';
   document.getElementById('btnDMP').style.display='none';
   document.getElementById('MMP').classList.add('open');
@@ -2934,6 +2985,9 @@ function editMP(id){
   document.getElementById('mp2-stock').value=m.stock_actual||0;
   document.getElementById('mp2-minimo').value=m.stock_minimo||0;
   document.getElementById('mp2-costo').value=m.costo_unitario||0;
+  document.getElementById('mp2-codigo').value=m.codigo||'';
+  document.getElementById('mp2-entrega').value=m.tiempo_entrega||'';
+  poblarSelectProveedores('mp2-proveedor',m.proveedor_id||'');
   document.getElementById('MMP-tit').textContent='✏️ Editar Materia Prima';
   document.getElementById('btnDMP').style.display='block';
   document.getElementById('MMP').classList.add('open');
@@ -2951,6 +3005,9 @@ async function saveMP2(){
       stock_actual:parseFloat(document.getElementById('mp2-stock').value)||0,
       stock_minimo:parseFloat(document.getElementById('mp2-minimo').value)||0,
       costo_unitario:parseFloat(document.getElementById('mp2-costo').value)||0,
+      codigo:document.getElementById('mp2-codigo').value.trim()||null,
+      proveedor_id:document.getElementById('mp2-proveedor').value||null,
+      tiempo_entrega:document.getElementById('mp2-entrega').value.trim()||null,
     };
     if(editMPId){
       await sbUpd('materias_primas',editMPId,data);
@@ -5076,6 +5133,204 @@ if('serviceWorker' in navigator){
       console.log('SW error:',e);
     });
   });
+}
+
+// ═══════════════════════════════════════════════════════════
+// PROVEEDORES
+// ═══════════════════════════════════════════════════════════
+let editProvId=null;
+
+function poblarSelectProveedores(selectId, valorActual){
+  var sel=document.getElementById(selectId);
+  if(!sel) return;
+  sel.innerHTML='<option value="">-- Sin proveedor --</option>'+
+    proveedores.map(function(p){
+      return'<option value="'+p.id+'"'+(p.id===valorActual?' selected':'')+'>'+p.nombre+'</option>';
+    }).join('');
+}
+
+function renderProveedores(){
+  const el=document.getElementById('stock-proveedores');
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Proveedores (${proveedores.length})</span>
+    <button onclick="abrirNuevoProv()" style="display:flex;align-items:center;gap:5px;padding:6px 12px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">+ Nuevo</button>
+  </div>`;
+
+  if(!proveedores.length){
+    el.innerHTML=html+'<div class="empty"><p>No hay proveedores registrados.<br>Agrega tus proveedores de materias primas.</p></div>';
+    return;
+  }
+
+  html+=proveedores.map(p=>{
+    // Materias primas de este proveedor
+    const mps=materias.filter(m=>m.proveedor_id===p.id);
+    return`<div class="prov-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="flex:1;min-width:0;">
+          <div class="prov-nombre">${p.nombre}</div>
+          ${p.ruc?`<div class="prov-dato">🏢 RUC: ${p.ruc}</div>`:''}
+          ${p.telefono?`<div class="prov-dato">📞 <a href="tel:${p.telefono}" style="color:var(--p);text-decoration:none;">${p.telefono}</a></div>`:''}
+          ${p.contacto?`<div class="prov-dato">👤 ${p.contacto}</div>`:''}
+          ${p.correo?`<div class="prov-dato">✉️ <a href="mailto:${p.correo}" style="color:var(--p);text-decoration:none;">${p.correo}</a></div>`:''}
+          ${p.direccion?`<div class="prov-dato">📍 ${p.direccion}</div>`:''}
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px;">
+          <button onclick="contactarProv('${p.id}')" style="padding:6px 10px;background:#25D366;color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;">💬</button>
+          <button onclick="editProv('${p.id}')" style="padding:6px 10px;background:var(--bg);border:1.5px solid var(--bdr);border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;color:var(--mu);">✏️</button>
+        </div>
+      </div>
+      ${mps.length?`
+      <div class="prov-mps">
+        <div style="font-size:.68rem;font-weight:800;color:var(--mu);text-transform:uppercase;margin-bottom:4px;">Materias primas (${mps.length})</div>
+        ${mps.map(m=>`
+          <div class="prov-mp-item">
+            <span style="font-weight:700;">${m.nombre}</span>
+            <span style="margin-left:6px;color:var(--p);">S/ ${parseFloat(m.costo_unitario||0).toFixed(2)}/${m.unidad||'UND'}</span>
+            ${m.tiempo_entrega?`<span style="margin-left:6px;color:var(--w);">⏱ ${m.tiempo_entrega}</span>`:''}
+            ${m.codigo?`<span style="margin-left:6px;background:var(--bg);padding:1px 5px;border-radius:4px;font-size:.62rem;">${m.codigo}</span>`:''}
+          </div>`).join('')}
+      </div>`:''}
+    </div>`;
+  }).join('');
+
+  // Resumen de sugerencias de compra por proveedor
+  const matAlerta=materias.filter(m=>parseFloat(m.stock_actual||0)<=parseFloat(m.stock_minimo||0)&&parseFloat(m.stock_minimo||0)>0);
+  if(matAlerta.length){
+    html+=`<div style="background:#fef3c7;border-radius:12px;padding:14px;margin-top:4px;">
+      <div style="font-size:.75rem;font-weight:800;color:#92400e;margin-bottom:8px;">🛒 Órdenes de compra sugeridas</div>`;
+    const porProv={};
+    matAlerta.forEach(m=>{
+      const pId=m.proveedor_id||'sin_proveedor';
+      if(!porProv[pId]) porProv[pId]=[];
+      porProv[pId].push(m);
+    });
+    Object.entries(porProv).forEach(([pId,mps])=>{
+      const pv=proveedores.find(x=>x.id===pId);
+      html+=`<div style="background:#fff;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+        <div style="font-size:.78rem;font-weight:800;margin-bottom:6px;">
+          ${pv?pv.nombre:'Sin proveedor asignado'}
+          ${pv&&pv.telefono?`<button onclick="ordenCompraWA('${pId}')" style="float:right;padding:3px 8px;background:#25D366;color:#fff;border:none;border-radius:6px;font-size:.65rem;font-weight:800;cursor:pointer;">💬 Enviar</button>`:''}
+        </div>
+        ${mps.map(m=>{
+          const faltante=Math.max(0,parseFloat(m.stock_minimo||0)*2-parseFloat(m.stock_actual||0));
+          return`<div style="font-size:.72rem;color:var(--mu);padding:3px 0;border-bottom:1px solid var(--bdr);">
+            • ${m.nombre}: <span style="color:var(--d);font-weight:800;">comprar ${faltante.toFixed(1)} ${m.unidad||'UND'}</span>
+            — S/ ${(faltante*parseFloat(m.costo_unitario||0)).toFixed(2)}
+          </div>`;
+        }).join('')}
+      </div>`;
+    });
+    html+='</div>';
+  }
+
+  el.innerHTML=html;
+}
+
+function contactarProv(provId){
+  const p=proveedores.find(x=>x.id===provId); if(!p) return;
+  const tel=p.telefono?(p.telefono.replace(/\D/g,'').startsWith('9')?'51'+p.telefono.replace(/\D/g,''):p.telefono.replace(/\D/g,'')):'';
+  if(!tel){toast('Este proveedor no tiene teléfono registrado','err');return;}
+  const msg=`Hola ${p.contacto||p.nombre}, le contactamos de FROSTECH.`;
+  window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(msg),'_blank');
+}
+
+function ordenCompraWA(provId){
+  const p=proveedores.find(x=>x.id===provId); if(!p||!p.telefono) return;
+  const mps=materias.filter(m=>m.proveedor_id===provId&&parseFloat(m.stock_actual||0)<=parseFloat(m.stock_minimo||0));
+  const tel=p.telefono.replace(/\D/g,'').startsWith('9')?'51'+p.telefono.replace(/\D/g,''):p.telefono.replace(/\D/g,'');
+  const now=new Date();
+  const fecha=now.getDate().toString().padStart(2,'0')+'/'+(now.getMonth()+1).toString().padStart(2,'0')+'/'+now.getFullYear();
+  var NL=String.fromCharCode(10);
+  var msg='Estimados '+p.nombre+','+NL+NL;
+  msg+='*ORDEN DE COMPRA - FROSTECH*'+NL;
+  msg+='Fecha: '+fecha+NL;
+  msg+='━━━━━━━━━━━━━━━━━━━━'+NL;
+  msg+='*Materiales requeridos:*'+NL;
+  mps.forEach(function(m){
+    var faltante=Math.max(0,parseFloat(m.stock_minimo||0)*2-parseFloat(m.stock_actual||0));
+    msg+='• '+m.nombre+': '+faltante.toFixed(1)+' '+( m.unidad||'UND')+NL;
+  });
+  msg+='━━━━━━━━━━━━━━━━━━━━'+NL;
+  msg+='Por favor confirmar disponibilidad y tiempo de entrega.'+NL;
+  msg+='FROSTECH | 946 901 261';
+  window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(msg),'_blank');
+}
+
+function abrirNuevoProv(){
+  editProvId=null;
+  ['prov-nombre','prov-ruc','prov-tel','prov-email','prov-contacto','prov-dir'].forEach(id=>{
+    var el=document.getElementById(id);
+    if(el) el.value='';
+  });
+  document.getElementById('MPROV-tit').textContent='🏭 Nuevo Proveedor';
+  document.getElementById('btnDPROV').style.display='none';
+  document.getElementById('MPROV').classList.add('open');
+}
+
+function editProv(id){
+  const p=proveedores.find(x=>x.id===id); if(!p) return;
+  editProvId=id;
+  document.getElementById('prov-nombre').value=p.nombre||'';
+  document.getElementById('prov-ruc').value=p.ruc||'';
+  document.getElementById('prov-tel').value=p.telefono||'';
+  document.getElementById('prov-email').value=p.correo||'';
+  document.getElementById('prov-contacto').value=p.contacto||'';
+  document.getElementById('prov-dir').value=p.direccion||'';
+  document.getElementById('MPROV-tit').textContent='✏️ Editar Proveedor';
+  document.getElementById('btnDPROV').style.display='block';
+  document.getElementById('MPROV').classList.add('open');
+}
+
+async function saveProveedor(){
+  const nombre=document.getElementById('prov-nombre').value.trim();
+  if(!nombre){toast('Ingresa el nombre del proveedor','err');return;}
+  const btn=document.getElementById('btnPROV');
+  btn.disabled=true;btn.textContent='⏳ Guardando...';
+  try{
+    const data={
+      nombre,
+      ruc:document.getElementById('prov-ruc').value.trim()||null,
+      telefono:document.getElementById('prov-tel').value.trim()||null,
+      correo:document.getElementById('prov-email').value.trim()||null,
+      contacto:document.getElementById('prov-contacto').value.trim()||null,
+      direccion:document.getElementById('prov-dir').value.trim()||null,
+    };
+    if(editProvId){
+      await sbUpd('proveedores',editProvId,data);
+      const i=proveedores.findIndex(x=>x.id===editProvId);
+      if(i>=0) Object.assign(proveedores[i],data);
+    } else {
+      data.id=gid();
+      await sbIns('proveedores',data);
+      proveedores.push(data);
+      proveedores.sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+    }
+    // Actualizar select en modal MP
+    poblarSelectProveedores('mp2-proveedor','');
+    renderProveedores();
+    toast('✓ Proveedor guardado','ok');
+    document.getElementById('MPROV').classList.remove('open');
+  }catch(e){toast('Error: '+e.message,'err');}
+  finally{btn.disabled=false;btn.textContent='✓ GUARDAR';}
+}
+
+async function deleteProveedor(){
+  if(!editProvId) return;
+  if(!confirm('¿Eliminar este proveedor? Las materias primas vinculadas quedarán sin proveedor.')) return;
+  try{
+    // Desvincular materias primas
+    const mps=materias.filter(m=>m.proveedor_id===editProvId);
+    for(const m of mps){
+      await sbUpd('materias_primas',m.id,{proveedor_id:null});
+      m.proveedor_id=null;
+    }
+    await sb('proveedores','DELETE',null,'?id=eq.'+editProvId);
+    proveedores=proveedores.filter(x=>x.id!==editProvId);
+    renderProveedores();
+    renderStockMaterias();
+    toast('✓ Proveedor eliminado','ok');
+    document.getElementById('MPROV').classList.remove('open');
+  }catch(e){toast('Error: '+e.message,'err');}
 }
 
 initLogin();
