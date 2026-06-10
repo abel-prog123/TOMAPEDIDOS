@@ -311,6 +311,8 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 .login-vend-btn{width:100%;padding:14px;background:var(--bg);border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.95rem;font-weight:800;cursor:pointer;color:var(--txt);display:flex;align-items:center;gap:12px;transition:all .2s;}
 .login-vend-btn:active{background:var(--p);color:#fff;border-color:var(--p);}
 .login-badge{position:fixed;top:12px;right:60px;background:rgba(255,255,255,.2);color:#fff;padding:4px 10px;border-radius:10px;font-size:.7rem;font-weight:800;z-index:50;}
+.pin-btn{padding:16px;background:var(--bg);border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:1.1rem;font-weight:800;cursor:pointer;color:var(--txt);transition:all .15s;}
+.pin-btn:active{background:var(--p);color:#fff;border-color:var(--p);}
 /* NOTIFICACIONES */
 .notif-dot{position:absolute;top:2px;right:2px;width:8px;height:8px;background:var(--d);border-radius:50%;border:2px solid var(--p);}
 .notif-panel{position:fixed;top:var(--nh);right:0;width:min(320px,100vw);background:#fff;border-radius:0 0 0 16px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:150;display:none;max-height:70vh;overflow-y:auto;}
@@ -361,16 +363,49 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 <div id="LOGIN" style="position:fixed;inset:0;background:var(--p);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:10000;padding:24px;">
   <div style="font-size:3rem;margin-bottom:12px;">🚚</div>
   <h1 style="color:#fff;font-size:1.6rem;font-weight:900;margin-bottom:4px;">TomaPedidos</h1>
-  <p style="color:rgba(255,255,255,.8);font-size:.88rem;margin-bottom:32px;">Frostech</p>
-  <div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,.2);">
+  <p style="color:rgba(255,255,255,.8);font-size:.88rem;margin-bottom:24px;">Frostech</p>
+
+  <!-- Paso 1: Seleccionar usuario -->
+  <div id="login-paso1" style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,.2);">
     <div style="font-size:.8rem;font-weight:800;color:var(--mu);text-transform:uppercase;margin-bottom:12px;">¿Quién eres?</div>
     <div id="login-vendedores" style="display:flex;flex-direction:column;gap:8px;"></div>
     <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--bdr);">
-      <div style="font-size:.75rem;font-weight:800;color:var(--mu);margin-bottom:8px;">O ingresa como:</div>
-      <button onclick="loginComo('GERENTE')" style="width:100%;padding:12px;background:#0f172a;color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.88rem;font-weight:800;cursor:pointer;">
-        👑 Gerente (ver todo)
+      <button onclick="seleccionarUsuario('GERENTE')" style="width:100%;padding:12px;background:#0f172a;color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.88rem;font-weight:800;cursor:pointer;">
+        👑 Gerente
       </button>
     </div>
+  </div>
+
+  <!-- Paso 2: Ingresar PIN -->
+  <div id="login-paso2" style="display:none;background:#fff;border-radius:16px;padding:24px;width:100%;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,.2);">
+    <div style="text-align:center;margin-bottom:16px;">
+      <div style="font-size:2rem;" id="login-pin-emoji"></div>
+      <div style="font-size:1rem;font-weight:800;color:var(--txt);" id="login-pin-nombre"></div>
+      <div style="font-size:.78rem;color:var(--mu);margin-top:4px;">Ingresa tu PIN de acceso</div>
+    </div>
+    <!-- Dots indicadores -->
+    <div style="display:flex;justify-content:center;gap:12px;margin-bottom:20px;" id="pin-dots">
+      <div style="width:14px;height:14px;border-radius:50%;border:2px solid var(--bdr);background:#fff;" id="dot-0"></div>
+      <div style="width:14px;height:14px;border-radius:50%;border:2px solid var(--bdr);background:#fff;" id="dot-1"></div>
+      <div style="width:14px;height:14px;border-radius:50%;border:2px solid var(--bdr);background:#fff;" id="dot-2"></div>
+      <div style="width:14px;height:14px;border-radius:50%;border:2px solid var(--bdr);background:#fff;" id="dot-3"></div>
+    </div>
+    <!-- Teclado numérico -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;" id="pin-teclado">
+      <button onclick="pinKey('1')" class="pin-btn">1</button>
+      <button onclick="pinKey('2')" class="pin-btn">2</button>
+      <button onclick="pinKey('3')" class="pin-btn">3</button>
+      <button onclick="pinKey('4')" class="pin-btn">4</button>
+      <button onclick="pinKey('5')" class="pin-btn">5</button>
+      <button onclick="pinKey('6')" class="pin-btn">6</button>
+      <button onclick="pinKey('7')" class="pin-btn">7</button>
+      <button onclick="pinKey('8')" class="pin-btn">8</button>
+      <button onclick="pinKey('9')" class="pin-btn">9</button>
+      <button onclick="loginVolver()" style="padding:16px;background:var(--bg);border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;font-weight:800;cursor:pointer;color:var(--mu);">←</button>
+      <button onclick="pinKey('0')" class="pin-btn">0</button>
+      <button onclick="pinBorrar()" style="padding:16px;background:#fee2e2;border:1.5px solid var(--d);border-radius:12px;font-family:inherit;font-size:.88rem;font-weight:800;cursor:pointer;color:var(--d);">⌫</button>
+    </div>
+    <div id="pin-error" style="color:var(--d);font-size:.78rem;font-weight:700;text-align:center;display:none;margin-top:8px;">PIN incorrecto. Intenta de nuevo.</div>
   </div>
 </div>
 
@@ -4140,11 +4175,34 @@ function descargarPDFventa(ventaId){
 // 1. LOGIN / SESIÓN
 // ═══════════════════════════════════════════════════════════
 const VENDEDORES=[
-  {nombre:'MOISES',emoji:'👨‍💼',color:'#0ea5e9'},
-  {nombre:'SONIA',emoji:'👩‍💼',color:'#8b5cf6'},
-  {nombre:'CRISTIAN',emoji:'👨‍🔬',color:'#10b981'},
-  {nombre:'JHOSY',emoji:'👩‍💻',color:'#f59e0b'},
+  {nombre:'MOISES',  emoji:'👨‍💼', color:'#0ea5e9', pin:'1234', rol:'vendedor'},
+  {nombre:'SONIA',   emoji:'👩‍💼', color:'#8b5cf6', pin:'2345', rol:'vendedor'},
+  {nombre:'CRISTIAN',emoji:'👨‍🔬', color:'#10b981', pin:'3456', rol:'vendedor'},
+  {nombre:'JHOSY',   emoji:'👩‍💻', color:'#f59e0b', pin:'4567', rol:'vendedor'},
 ];
+const PIN_GERENTE='0000'; // Cambiar por PIN seguro
+
+// Permisos por rol
+const PERMISOS={
+  gerente:{
+    verStock:true, verComisiones:true, verDashboard:true,
+    verTodasVentas:true, eliminar:true, editarProductos:true,
+    editarClientes:true, verReportes:true
+  },
+  vendedor:{
+    verStock:false, verComisiones:false, verDashboard:false,
+    verTodasVentas:false, eliminar:false, editarProductos:false,
+    editarClientes:true, verReportes:false
+  }
+};
+
+function puedo(permiso){
+  const rol=sesion.rol||'vendedor';
+  return PERMISOS[rol]?.[permiso]||false;
+}
+
+let pinActual='';
+let usuarioSeleccionado=null;
 
 function initLogin(){
   const guardada=localStorage.getItem('frostech_sesion');
@@ -4156,36 +4214,118 @@ function initLogin(){
       return;
     }catch(e){}
   }
-  // Ocultar loading y mostrar login
   document.getElementById('LS').style.display='none';
   const container=document.getElementById('login-vendedores');
   container.innerHTML=VENDEDORES.map(v=>`
-    <button class="login-vend-btn" onclick="loginComo('${v.nombre}')" style="border-left:4px solid ${v.color};">
+    <button class="login-vend-btn" onclick="seleccionarUsuario('${v.nombre}')" style="border-left:4px solid ${v.color};">
       <span style="font-size:1.4rem;">${v.emoji}</span>
       <span>${v.nombre}</span>
     </button>`).join('');
   document.getElementById('LOGIN').style.display='flex';
 }
 
+function seleccionarUsuario(nombre){
+  usuarioSeleccionado=nombre;
+  pinActual='';
+  const vend=VENDEDORES.find(v=>v.nombre===nombre);
+  const emoji=nombre==='GERENTE'?'👑':vend?vend.emoji:'👤';
+  document.getElementById('login-pin-emoji').textContent=emoji;
+  document.getElementById('login-pin-nombre').textContent=nombre;
+  document.getElementById('login-paso1').style.display='none';
+  document.getElementById('login-paso2').style.display='block';
+  document.getElementById('pin-error').style.display='none';
+  actualizarDots();
+}
+
+function loginVolver(){
+  document.getElementById('login-paso1').style.display='block';
+  document.getElementById('login-paso2').style.display='none';
+  pinActual='';
+  usuarioSeleccionado=null;
+}
+
+function pinKey(num){
+  if(pinActual.length>=4) return;
+  pinActual+=num;
+  actualizarDots();
+  if(pinActual.length===4) verificarPin();
+}
+
+function pinBorrar(){
+  pinActual=pinActual.slice(0,-1);
+  actualizarDots();
+  document.getElementById('pin-error').style.display='none';
+}
+
+function actualizarDots(){
+  for(var i=0;i<4;i++){
+    var dot=document.getElementById('dot-'+i);
+    if(dot){
+      dot.style.background=i<pinActual.length?'var(--p)':'#fff';
+      dot.style.borderColor=i<pinActual.length?'var(--p)':'var(--bdr)';
+    }
+  }
+}
+
+function verificarPin(){
+  var pinCorrecto=false;
+  var rol='vendedor';
+  var pinesCustom=JSON.parse(localStorage.getItem('frostech_pines')||'{}');
+  if(usuarioSeleccionado==='GERENTE'){
+    var pinG=pinesCustom['GERENTE']||PIN_GERENTE;
+    pinCorrecto=pinActual===pinG;
+    rol='gerente';
+  } else {
+    var vend=VENDEDORES.find(v=>v.nombre===usuarioSeleccionado);
+    var pinVend=pinesCustom[usuarioSeleccionado]||(vend?vend.pin:'');
+    pinCorrecto=pinActual===pinVend;
+  }
+
+  if(pinCorrecto){
+    sesion={vendedor:usuarioSeleccionado,rol};
+    localStorage.setItem('frostech_sesion',JSON.stringify(sesion));
+    document.getElementById('LOGIN').style.display='none';
+    document.getElementById('LS').style.display='flex';
+    mostrarApp();
+  } else {
+    pinActual='';
+    actualizarDots();
+    document.getElementById('pin-error').style.display='block';
+    // Vibrar si disponible
+    if(navigator.vibrate) navigator.vibrate([100,50,100]);
+  }
+}
+
 function loginComo(quien){
-  sesion={
-    vendedor:quien,
-    rol:quien==='GERENTE'?'gerente':'vendedor'
-  };
-  localStorage.setItem('frostech_sesion',JSON.stringify(sesion));
-  document.getElementById('LOGIN').style.display='none';
-  document.getElementById('LS').style.display='flex';
-  mostrarApp();
+  seleccionarUsuario(quien);
 }
 
 function mostrarApp(){
   const badge=document.getElementById('sesion-badge');
   if(badge) badge.textContent=sesion.rol==='gerente'?'👑 Gerente':'· '+sesion.vendedor;
+
+  // Ocultar tabs de navegación según rol
+  const esVendedor=sesion.rol==='vendedor';
+  const navStock=document.getElementById('ni-stock');
+  const navDash=document.getElementById('ni-dashboard');
+  if(navStock) navStock.style.display=esVendedor?'none':'flex';
+  if(navDash) navDash.style.display=esVendedor?'none':'flex';
+
+  // Ocultar botón de eliminar en modales para vendedores
+  if(esVendedor){
+    ['btnDC','btnDP','btnDGL','btnDMP'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el) el.style.display='none';
+    });
+  }
+
   // Pre-seleccionar vendedor en formulario
   const selV=document.getElementById('sel-v');
-  if(selV&&sesion.rol==='vendedor'){
+  if(selV&&esVendedor){
     selV.value=sesion.vendedor;
+    selV.disabled=true; // Vendedor no puede cambiar su nombre
   }
+
   init();
 }
 
@@ -4194,6 +4334,22 @@ function cerrarSesion(){
   localStorage.removeItem('frostech_sesion');
   sesion={vendedor:'',rol:''};
   location.reload();
+}
+
+function cambiarPin(){
+  if(!puedo('eliminar')){toast('Solo el gerente puede cambiar PINs','err');return;}
+  var vend=prompt('¿PIN de quién cambiar? (nombre del vendedor o GERENTE):');
+  if(!vend) return;
+  vend=vend.toUpperCase();
+  var nuevoPin=prompt('Nuevo PIN (4 dígitos):');
+  if(!nuevoPin||nuevoPin.length!==4||isNaN(nuevoPin)){
+    toast('El PIN debe ser de 4 dígitos numéricos','err');return;
+  }
+  // Guardar en localStorage como override
+  var pines=JSON.parse(localStorage.getItem('frostech_pines')||'{}');
+  pines[vend]=nuevoPin;
+  localStorage.setItem('frostech_pines',JSON.stringify(pines));
+  toast('✓ PIN actualizado para '+vend,'ok');
 }
 
 // ═══════════════════════════════════════════════════════════
