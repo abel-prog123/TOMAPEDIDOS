@@ -870,10 +870,19 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 </div>
 
 <!-- MODAL PROVEEDOR -->
-<div class="mo" id="MPROV" onclick="if(event.target===this)this.classList.remove('open')">
+<div class="mo" id="MPROV" onclick="if(event.target===this)this.classList.remove('open')" style="z-index:200;">
   <div class="modal">
     <div class="mh"></div>
     <div class="mtit" id="MPROV-tit">🏭 Nuevo Proveedor</div>
+    <!-- Foto del proveedor -->
+    <div style="display:flex;justify-content:center;margin-bottom:16px;">
+      <div class="foto-perfil-box" style="border-radius:14px;width:90px;height:90px;" onclick="document.getElementById('fi-prov-foto').click()">
+        <img id="prov-foto-prev" src="" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:12px;">
+        <span id="prov-foto-icon" style="font-size:2rem;">🏭</span>
+        <div class="foto-perfil-overlay">📷 Logo</div>
+      </div>
+      <input type="file" id="fi-prov-foto" accept="image/*" onchange="previewProvPhoto()" style="display:none">
+    </div>
     <div class="fg"><label>Nombre / Razón social *</label>
       <input type="text" id="prov-nombre" class="minp" style="width:100%" placeholder="Ej: Quimicos SAC"></div>
     <div class="fg"><label>RUC</label>
@@ -5167,7 +5176,10 @@ function renderProveedores(){
     return`<div class="prov-card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
         <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+          ${p.foto_url?`<img src="${p.foto_url}" style="width:36px;height:36px;border-radius:8px;object-fit:cover;flex-shrink:0;" onclick="openLBUrl('${p.foto_url}')">`:'<div style="width:36px;height:36px;border-radius:8px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">🏭</div>'}
           <div class="prov-nombre">${p.nombre}</div>
+        </div>
           ${p.ruc?`<div class="prov-dato">🏢 RUC: ${p.ruc}</div>`:''}
           ${p.telefono?`<div class="prov-dato">📞 <a href="tel:${p.telefono}" style="color:var(--p);text-decoration:none;">${p.telefono}</a></div>`:''}
           ${p.contacto?`<div class="prov-dato">👤 ${p.contacto}</div>`:''}
@@ -5257,11 +5269,13 @@ function ordenCompraWA(provId){
 }
 
 function abrirNuevoProv(){
-  editProvId=null;
+  editProvId=null; newProvPhoto=null;
   ['prov-nombre','prov-ruc','prov-tel','prov-email','prov-contacto','prov-dir'].forEach(id=>{
     var el=document.getElementById(id);
     if(el) el.value='';
   });
+  document.getElementById('prov-foto-prev').style.display='none';
+  document.getElementById('prov-foto-icon').style.display='block';
   document.getElementById('MPROV-tit').textContent='🏭 Nuevo Proveedor';
   document.getElementById('btnDPROV').style.display='none';
   document.getElementById('MPROV').classList.add('open');
@@ -5269,16 +5283,34 @@ function abrirNuevoProv(){
 
 function editProv(id){
   const p=proveedores.find(x=>x.id===id); if(!p) return;
-  editProvId=id;
+  editProvId=id; newProvPhoto=null;
   document.getElementById('prov-nombre').value=p.nombre||'';
   document.getElementById('prov-ruc').value=p.ruc||'';
   document.getElementById('prov-tel').value=p.telefono||'';
   document.getElementById('prov-email').value=p.correo||'';
   document.getElementById('prov-contacto').value=p.contacto||'';
   document.getElementById('prov-dir').value=p.direccion||'';
+  const prev=document.getElementById('prov-foto-prev');
+  const icon=document.getElementById('prov-foto-icon');
+  if(p.foto_url){prev.src=p.foto_url;prev.style.display='block';icon.style.display='none';}
+  else{prev.style.display='none';icon.style.display='block';}
   document.getElementById('MPROV-tit').textContent='✏️ Editar Proveedor';
   document.getElementById('btnDPROV').style.display='block';
   document.getElementById('MPROV').classList.add('open');
+}
+
+let newProvPhoto=null;
+
+function previewProvPhoto(){
+  const file=document.getElementById('fi-prov-foto').files[0]; if(!file) return;
+  newProvPhoto=file;
+  const r=new FileReader();
+  r.onload=e=>{
+    document.getElementById('prov-foto-prev').src=e.target.result;
+    document.getElementById('prov-foto-prev').style.display='block';
+    document.getElementById('prov-foto-icon').style.display='none';
+  };
+  r.readAsDataURL(file);
 }
 
 async function saveProveedor(){
@@ -5287,6 +5319,10 @@ async function saveProveedor(){
   const btn=document.getElementById('btnPROV');
   btn.disabled=true;btn.textContent='⏳ Guardando...';
   try{
+    let fotoUrl=null;
+    if(newProvPhoto){
+      fotoUrl=await uploadFile({file:newProvPhoto,mimeType:newProvPhoto.type,name:newProvPhoto.name},'prov_'+(editProvId||gid()));
+    }
     const data={
       nombre,
       ruc:document.getElementById('prov-ruc').value.trim()||null,
@@ -5295,6 +5331,7 @@ async function saveProveedor(){
       contacto:document.getElementById('prov-contacto').value.trim()||null,
       direccion:document.getElementById('prov-dir').value.trim()||null,
     };
+    if(fotoUrl) data.foto_url=fotoUrl;
     if(editProvId){
       await sbUpd('proveedores',editProvId,data);
       const i=proveedores.findIndex(x=>x.id===editProvId);
@@ -5305,11 +5342,11 @@ async function saveProveedor(){
       proveedores.push(data);
       proveedores.sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
     }
-    // Actualizar select en modal MP
     poblarSelectProveedores('mp2-proveedor','');
     renderProveedores();
     toast('✓ Proveedor guardado','ok');
     document.getElementById('MPROV').classList.remove('open');
+    newProvPhoto=null;
   }catch(e){toast('Error: '+e.message,'err');}
   finally{btn.disabled=false;btn.textContent='✓ GUARDAR';}
 }
