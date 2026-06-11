@@ -995,6 +995,15 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
   <div class="modal">
     <div class="mh"></div>
     <div class="mtit" id="MMP-tit">📦 Nueva Materia Prima</div>
+    <!-- Foto -->
+    <div style="display:flex;justify-content:center;margin-bottom:12px;">
+      <div class="foto-perfil-box" style="border-radius:12px;width:80px;height:80px;" onclick="document.getElementById('fi-mp-foto').click()">
+        <img id="mp-foto-prev" src="" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:10px;">
+        <span id="mp-foto-icon" style="font-size:1.8rem;">🧪</span>
+        <div class="foto-perfil-overlay">📷 Foto</div>
+      </div>
+      <input type="file" id="fi-mp-foto" accept="image/*" onchange="previewMPPhoto()" style="display:none">
+    </div>
     <div class="fg"><label>Nombre *</label><input type="text" id="mp2-nombre" class="minp" style="width:100%"></div>
     <div class="fg"><label>Unidad de medida</label>
       <select id="mp2-unidad" class="msel">
@@ -2860,6 +2869,7 @@ function renderStockMaterias(){
     const min=parseFloat(m.stock_minimo||0);
     const cls=getStockClase(act,min);
     return`<div class="stock-card ${cls}">
+      ${m.foto_url?`<div style="width:48px;height:48px;border-radius:10px;overflow:hidden;flex-shrink:0;cursor:pointer;" onclick="openLBUrl('${m.foto_url}')"><img src="${m.foto_url}" style="width:100%;height:100%;object-fit:cover;"></div>`:''}
       <div class="stock-info">
         <div class="stock-nombre">${m.nombre}</div>
         <div class="stock-unidad">${m.unidad||'UND'} · Mín: ${min} · S/ ${parseFloat(m.costo_unitario||0).toFixed(2)}/u${(()=>{const pv=proveedores.find(p=>p.id===m.proveedor_id);return pv?' · 🏭 '+pv.nombre:'';})()}</div>
@@ -2989,6 +2999,9 @@ function abrirNuevaMP(){
   ['mp2-nombre','mp2-stock','mp2-minimo','mp2-costo','mp2-codigo','mp2-entrega'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('mp2-unidad').value='UND';
   poblarSelectProveedores('mp2-proveedor','');
+  window._newMPPhoto=null;
+  document.getElementById('mp-foto-prev').style.display='none';
+  document.getElementById('mp-foto-icon').style.display='block';
   document.getElementById('MMP-tit').textContent='📦 Nueva Materia Prima';
   document.getElementById('btnDMP').style.display='none';
   document.getElementById('MMP').classList.add('open');
@@ -3005,9 +3018,26 @@ function editMP(id){
   document.getElementById('mp2-codigo').value=m.codigo||'';
   document.getElementById('mp2-entrega').value=m.tiempo_entrega||'';
   poblarSelectProveedores('mp2-proveedor',m.proveedor_id||'');
+  window._newMPPhoto=null;
+  const mpPrev=document.getElementById('mp-foto-prev');
+  const mpIcon=document.getElementById('mp-foto-icon');
+  if(m.foto_url){mpPrev.src=m.foto_url;mpPrev.style.display='block';mpIcon.style.display='none';}
+  else{mpPrev.style.display='none';mpIcon.style.display='block';}
   document.getElementById('MMP-tit').textContent='✏️ Editar Materia Prima';
   document.getElementById('btnDMP').style.display='block';
   document.getElementById('MMP').classList.add('open');
+}
+
+function previewMPPhoto(){
+  const file=document.getElementById('fi-mp-foto').files[0]; if(!file) return;
+  window._newMPPhoto=file;
+  const r=new FileReader();
+  r.onload=e=>{
+    document.getElementById('mp-foto-prev').src=e.target.result;
+    document.getElementById('mp-foto-prev').style.display='block';
+    document.getElementById('mp-foto-icon').style.display='none';
+  };
+  r.readAsDataURL(file);
 }
 
 async function saveMP2(){
@@ -3016,6 +3046,11 @@ async function saveMP2(){
   const btn=document.getElementById('btnMMP');
   btn.disabled=true;btn.textContent='⏳ Guardando...';
   try{
+    let fotoUrl=null;
+    if(window._newMPPhoto){
+      fotoUrl=await uploadFile({file:window._newMPPhoto,mimeType:window._newMPPhoto.type,name:window._newMPPhoto.name},'mp_'+(editMPId||gid()));
+      window._newMPPhoto=null;
+    }
     const data={
       nombre,
       unidad:document.getElementById('mp2-unidad').value,
@@ -3026,6 +3061,7 @@ async function saveMP2(){
       proveedor_id:document.getElementById('mp2-proveedor').value||null,
       tiempo_entrega:document.getElementById('mp2-entrega').value.trim()||null,
     };
+    if(fotoUrl) data.foto_url=fotoUrl;
     if(editMPId){
       await sbUpd('materias_primas',editMPId,data);
       const i=materias.findIndex(x=>x.id===editMPId);
