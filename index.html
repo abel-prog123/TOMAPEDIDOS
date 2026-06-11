@@ -580,7 +580,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="tab" onclick="stockTab('movimientos')" id="stab-movimientos" style="white-space:nowrap;">Movimientos</div>
     <div class="tab" onclick="stockTab('proveedores')" id="stab-proveedores" style="white-space:nowrap;">Proveedores</div>
   </div>
-  <div class="scroll" id="stock-scroll">
+  <div class="scroll" id="stock-scroll" style="display:block;overflow-y:auto;flex:1;">
     <div id="stock-resumen"></div>
     <div id="stock-productos" style="display:none"></div>
     <div id="stock-graneles" style="display:none"></div>
@@ -2776,19 +2776,27 @@ async function exportComisionesPDF(){
 
 // ── STOCK ─────────────────────────────────────────────────
 function stockTab(t){
+  // Ocultar todos primero
   ['resumen','productos','graneles','materias','recetas','movimientos','proveedores'].forEach(x=>{
     const el=document.getElementById('stock-'+x);
     const tab=document.getElementById('stab-'+x);
-    if(el) el.style.display=x===t?'':'none';
+    if(el){el.style.display='none';el.style.minHeight='';}
     if(tab) tab.classList.toggle('active',x===t);
   });
+  // Mostrar el activo con altura mínima garantizada
+  const activo=document.getElementById('stock-'+t);
+  if(activo){
+    activo.style.display='block';
+    activo.style.minHeight='200px';
+  }
+  // Renderizar contenido
   if(t==='resumen') renderStockResumen();
-  if(t==='productos') renderStockProds();
-  if(t==='graneles') renderStockGraneles();
-  if(t==='materias') renderStockMaterias();
-  if(t==='recetas') renderStockRecetas();
-  if(t==='movimientos') renderMovimientos();
-  if(t==='proveedores') renderProveedores();
+  else if(t==='productos') renderStockProds();
+  else if(t==='graneles') renderStockGraneles();
+  else if(t==='materias') renderStockMaterias();
+  else if(t==='recetas') renderStockRecetas();
+  else if(t==='movimientos') renderMovimientos();
+  else if(t==='proveedores') renderProveedores();
 }
 
 function getStockClase(actual,minimo){
