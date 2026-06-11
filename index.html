@@ -5181,8 +5181,9 @@ function renderProveedores(){
 
   proveedores.forEach(function(p){
     var mps=materias.filter(function(m){return m.proveedor_id===p.id;});
-    var fotoHtml=p.foto_url?
-      '<img src="'+p.foto_url+'" style="width:36px;height:36px;border-radius:8px;object-fit:cover;flex-shrink:0;" onclick="openLBUrl(''+p.foto_url+'')">':
+    var fotoUrl=p.foto_url||'';
+    var fotoHtml=fotoUrl?
+      '<img src="'+fotoUrl+'" style="width:36px;height:36px;border-radius:8px;object-fit:cover;flex-shrink:0;">':
       '<div style="width:36px;height:36px;border-radius:8px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">🏭</div>';
 
     html+='<div class="prov-card">';
@@ -5196,8 +5197,8 @@ function renderProveedores(){
     if(p.direccion) html+='<div class="prov-dato">📍 '+p.direccion+'</div>';
     html+='</div>';
     html+='<div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px;">';
-    html+='<button onclick="contactarProv(''+p.id+'')" style="padding:6px 10px;background:#25D366;color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;">💬</button>';
-    html+='<button onclick="editProv(''+p.id+'')" style="padding:6px 10px;background:var(--bg);border:1.5px solid var(--bdr);border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;color:var(--mu);">✏️</button>';
+    html+='<button data-pid="'+p.id+'" onclick="contactarProv(this.dataset.pid)" style="padding:6px 10px;background:#25D366;color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;">💬</button>';
+    html+='<button data-pid="'+p.id+'" onclick="editProv(this.dataset.pid)" style="padding:6px 10px;background:var(--bg);border:1.5px solid var(--bdr);border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;color:var(--mu);">✏️</button>';
     html+='</div></div>';
 
     if(mps.length){
@@ -5229,7 +5230,7 @@ function renderProveedores(){
       html+='<div style="background:#fff;border-radius:10px;padding:10px 12px;margin-bottom:8px;">';
       html+='<div style="font-size:.78rem;font-weight:800;margin-bottom:6px;">';
       html+=pv?pv.nombre:'Sin proveedor asignado';
-      if(pv&&pv.telefono) html+='<button onclick="ordenCompraWA(''+pId+'')" style="float:right;padding:3px 8px;background:#25D366;color:#fff;border:none;border-radius:6px;font-size:.65rem;font-weight:800;cursor:pointer;">💬 Enviar</button>';
+      if(pv&&pv.telefono) html+='<button data-pid="'+pId+'" onclick="ordenCompraWA(this.dataset.pid)" style="float:right;padding:3px 8px;background:#25D366;color:#fff;border:none;border-radius:6px;font-size:.65rem;font-weight:800;cursor:pointer;">💬 Enviar</button>';
       html+='</div>';
       mps2.forEach(function(m){
         var faltante=Math.max(0,parseFloat(m.stock_minimo||0)*2-parseFloat(m.stock_actual||0));
