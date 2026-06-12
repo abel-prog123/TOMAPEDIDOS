@@ -2819,16 +2819,20 @@ function getStockClase(actual,minimo){
 function renderStockProds(){
   const el=document.getElementById('stock-productos');
   // Alertas
+  const q=(document.getElementById('busq-stock-prod')||{value:''}).value.toLowerCase();
   const bajos=prods.filter(p=>parseFloat(p.stock_actual||0)<=parseFloat(p.stock_minimo||0)&&parseFloat(p.stock_minimo||0)>0);
+  const filtrados=q?prods.filter(p=>(p.nombre||'').toLowerCase().includes(q)||(p.categoria||'').toLowerCase().includes(q)):prods;
   let html='';
-  if(bajos.length){
+  if(bajos.length&&!q){
     html+=`<div class="alerta-banner"><span style="font-size:1.4rem">🚨</span><div class="alerta-banner-txt">${bajos.length} producto${bajos.length>1?'s':''} con stock bajo o agotado</div></div>`;
   }
-  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-    <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Inventario de productos</span>
-  </div>`;
-  if(!prods.length){el.innerHTML='<div class="empty"><p>Sin productos</p></div>';return;}
-  html+=prods.map(p=>{
+  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Inventario (${filtrados.length})</span>
+  </div>
+  <input type="text" id="busq-stock-prod" placeholder="🔍 Buscar producto..." oninput="renderStockProds()"
+    style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">`;
+  if(!filtrados.length){el.innerHTML=html+'<div class="empty"><p>Sin resultados</p></div>';return;}
+  html+=filtrados.map(p=>{
     const act=parseFloat(p.stock_actual||0);
     const min=parseFloat(p.stock_minimo||0);
     const cls=getStockClase(act,min);
@@ -2854,17 +2858,21 @@ function renderStockProds(){
 // Materias primas
 function renderStockMaterias(){
   const el=document.getElementById('stock-materias');
+  const qmp=(document.getElementById('busq-stock-mp')||{value:''}).value.toLowerCase();
   const bajos=materias.filter(m=>parseFloat(m.stock_actual||0)<=parseFloat(m.stock_minimo||0)&&parseFloat(m.stock_minimo||0)>0);
+  const filtradosMP=qmp?materias.filter(m=>(m.nombre||'').toLowerCase().includes(qmp)||(m.codigo||'').toLowerCase().includes(qmp)):materias;
   let html='';
-  if(bajos.length){
+  if(bajos.length&&!qmp){
     html+=`<div class="alerta-banner"><span style="font-size:1.4rem">🚨</span><div class="alerta-banner-txt">${bajos.length} materia${bajos.length>1?'s primas':' prima'} con stock bajo</div></div>`;
   }
-  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-    <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Materias primas</span>
+  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Materias primas (${filtradosMP.length})</span>
     <button onclick="abrirNuevaMP()" style="display:flex;align-items:center;gap:5px;padding:6px 12px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">+ Nueva</button>
-  </div>`;
-  if(!materias.length){el.innerHTML=html+'<div class="empty"><p>No hay materias primas registradas</p></div>';return;}
-  html+=materias.map(m=>{
+  </div>
+  <input type="text" id="busq-stock-mp" placeholder="🔍 Buscar materia prima o SKU..." oninput="renderStockMaterias()"
+    style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">`;
+  if(!filtradosMP.length){el.innerHTML=html+'<div class="empty"><p>Sin resultados</p></div>';return;}
+  html+=filtradosMP.map(m=>{
     const act=parseFloat(m.stock_actual||0);
     const min=parseFloat(m.stock_minimo||0);
     const cls=getStockClase(act,min);
@@ -2894,7 +2902,7 @@ function renderStockMaterias(){
 function renderStockRecetas(){
   const el=document.getElementById('stock-recetas');
   let html=`<div style="margin-bottom:10px;font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Recetas por producto</div>`;
-  html+=prods.map(p=>{
+  html+=filtrados.map(p=>{
     const recs=recetas.filter(r=>r.producto_id===p.id);
     return`<div class="stock-card" style="flex-direction:column;align-items:flex-start;">
       <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
@@ -3148,20 +3156,24 @@ async function deleteRecetaItem(recId,prodId){
 // ── GRANELES ──────────────────────────────────────────────
 function renderStockGraneles(){
   const el=document.getElementById('stock-graneles');
+  const qgl=(document.getElementById('busq-stock-gl')||{value:''}).value.toLowerCase();
   const bajos=graneles.filter(g=>parseFloat(g.stock_actual||0)<=parseFloat(g.stock_minimo||0)&&parseFloat(g.stock_minimo||0)>0);
+  const filtradosGL=qgl?graneles.filter(g=>(g.nombre||'').toLowerCase().includes(qgl)):graneles;
   let html='';
-  if(bajos.length){
+  if(bajos.length&&!qgl){
     html+=`<div class="alerta-banner"><span style="font-size:1.4rem">🚨</span><div class="alerta-banner-txt">${bajos.length} granel${bajos.length>1?'es':''} con stock bajo</div></div>`;
   }
-  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-    <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Graneles / Semi-elaborados</span>
+  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Graneles (${filtradosGL.length})</span>
     <button onclick="abrirNuevoGranel()" style="display:flex;align-items:center;gap:5px;padding:6px 12px;background:var(--w);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">+ Nuevo</button>
-  </div>`;
-  if(!graneles.length){
+  </div>
+  <input type="text" id="busq-stock-gl" placeholder="🔍 Buscar granel..." oninput="renderStockGraneles()"
+    style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">`;
+  if(!filtradosGL.length){
     el.innerHTML=html+`<div class="empty"><p>No hay graneles registrados.<br>Un granel es una mezcla base que luego se envasa para crear productos terminados.</p></div>`;
     return;
   }
-  html+=graneles.map(g=>{
+  html+=filtradosGL.map(g=>{
     const act=parseFloat(g.stock_actual||0);
     const min=parseFloat(g.stock_minimo||0);
     const cls=getStockClase(act,min);
@@ -3427,7 +3439,7 @@ async function deleteRecetaPGItem(recId,prodId){
 function renderStockRecetas(){
   const el=document.getElementById('stock-recetas');
   let html=`<div style="margin-bottom:10px;font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Recetas de productos terminados</div>`;
-  html+=prods.map(p=>{
+  html+=filtrados.map(p=>{
     const recs=recetas.filter(r=>r.producto_id===p.id);
     const granelRecs=recs.filter(r=>r.granel_id);
     const mpRecs=recs.filter(r=>!r.granel_id&&r.materia_prima_id);
@@ -5205,17 +5217,20 @@ function poblarSelectProveedores(selectId, valorActual){
 function renderProveedores(){
   const el=document.getElementById('stock-proveedores');
   if(!el) return;
-  var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
-  html+='<span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Proveedores ('+proveedores.length+')</span>';
+  var qpv=(document.getElementById('busq-stock-pv')||{value:''}).value.toLowerCase();
+  var filtradosPV=qpv?proveedores.filter(function(p){return(p.nombre||'').toLowerCase().includes(qpv)||(p.ruc||'').includes(qpv)||(p.contacto||'').toLowerCase().includes(qpv);}):proveedores;
+  var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+  html+='<span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Proveedores ('+filtradosPV.length+')</span>';
   html+='<button onclick="abrirNuevoProv()" style="display:flex;align-items:center;gap:5px;padding:6px 12px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">+ Nuevo</button>';
   html+='</div>';
+  html+='<input type="text" id="busq-stock-pv" placeholder="🔍 Buscar proveedor..." oninput="renderProveedores()" style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">';
 
-  if(!proveedores.length){
+  if(!filtradosPV.length){
     el.innerHTML=html+'<div class="empty"><p>No hay proveedores registrados.<br>Agrega tus proveedores de materias primas.</p></div>';
     return;
   }
 
-  proveedores.forEach(function(p){
+  filtradosPV.forEach(function(p){
     var mps=materias.filter(function(m){return m.proveedor_id===p.id;});
     var fotoUrl=p.foto_url||'';
     var fotoHtml=fotoUrl?
