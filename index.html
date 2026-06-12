@@ -795,10 +795,19 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
         <input type="date" id="export-hasta" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;"></div>
     </div>
     <div class="fg"><label>¿Qué incluir?</label>
-      <div style="display:flex;flex-direction:column;gap:6px;padding:8px;">
-        <label style="display:flex;align-items:center;gap:8px;font-size:.82rem;"><input type="checkbox" id="exp-ventas" checked> Resumen de ventas</label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:.82rem;"><input type="checkbox" id="exp-detalle" checked> Detalle por producto</label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:.82rem;"><input type="checkbox" id="exp-anuladas"> Incluir ventas anuladas</label>
+      <div style="background:var(--bg);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <input type="checkbox" id="exp-ventas" checked style="width:18px;height:18px;accent-color:var(--p);flex-shrink:0;cursor:pointer;">
+          <span style="font-size:.85rem;font-weight:600;color:var(--txt);">Resumen de ventas</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <input type="checkbox" id="exp-detalle" checked style="width:18px;height:18px;accent-color:var(--p);flex-shrink:0;cursor:pointer;">
+          <span style="font-size:.85rem;font-weight:600;color:var(--txt);">Detalle por producto</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <input type="checkbox" id="exp-anuladas" style="width:18px;height:18px;accent-color:var(--p);flex-shrink:0;cursor:pointer;">
+          <span style="font-size:.85rem;font-weight:600;color:var(--txt);">Incluir ventas anuladas</span>
+        </div>
       </div>
     </div>
     <button onclick="ejecutarExportExcel()" style="width:100%;padding:13px;background:#217346;color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.95rem;font-weight:800;cursor:pointer;margin-bottom:8px;">📥 Descargar Excel</button>
