@@ -2945,6 +2945,16 @@ function getStockClase(actual,minimo){
 }
 
 // Productos con stock
+// Mantiene texto y cursor del buscador al re-renderizar la lista
+function busqStock(id, fn){
+  var e=document.getElementById(id);
+  var val=e?e.value:'';
+  var caret=(e&&e.selectionStart!=null)?e.selectionStart:val.length;
+  fn();
+  var e2=document.getElementById(id);
+  if(e2){ e2.value=val; e2.focus(); try{ e2.setSelectionRange(caret,caret); }catch(_){} }
+}
+
 function renderStockProds(){
   const el=document.getElementById('stock-productos');
   // Alertas
@@ -2958,7 +2968,7 @@ function renderStockProds(){
   html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
     <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Inventario (${filtrados.length})</span>
   </div>
-  <input type="text" id="busq-stock-prod" placeholder="🔍 Buscar producto..." oninput="renderStockProds()"
+  <input type="text" id="busq-stock-prod" placeholder="🔍 Buscar producto..." oninput="busqStock('busq-stock-prod',renderStockProds)"
     style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">`;
   if(!filtrados.length){el.innerHTML=html+'<div class="empty"><p>Sin resultados</p></div>';return;}
   html+=filtrados.map(p=>{
@@ -2998,7 +3008,7 @@ function renderStockMaterias(){
     <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Materias primas (${filtradosMP.length})</span>
     <button onclick="abrirNuevaMP()" style="display:flex;align-items:center;gap:5px;padding:6px 12px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">+ Nueva</button>
   </div>
-  <input type="text" id="busq-stock-mp" placeholder="🔍 Buscar materia prima o SKU..." oninput="renderStockMaterias()"
+  <input type="text" id="busq-stock-mp" placeholder="🔍 Buscar materia prima o SKU..." oninput="busqStock('busq-stock-mp',renderStockMaterias)"
     style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">`;
   if(!filtradosMP.length){el.innerHTML=html+'<div class="empty"><p>Sin resultados</p></div>';return;}
   html+=filtradosMP.map(m=>{
@@ -3033,7 +3043,7 @@ function renderStockRecetas(){
   const qrec=(document.getElementById('busq-stock-rec')||{value:''}).value.toLowerCase();
   const filtradosRec=qrec?prods.filter(p=>(p.nombre||'').toLowerCase().includes(qrec)):prods;
   var html='<div style="margin-bottom:8px;font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Recetas por producto ('+filtradosRec.length+')</div>';
-  html+='<input type="text" id="busq-stock-rec" placeholder="🔍 Buscar producto..." oninput="renderStockRecetas()" style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">';
+  html+='<input type="text" id="busq-stock-rec" placeholder="🔍 Buscar producto..." oninput="busqStock(\'busq-stock-rec\',renderStockRecetas)" style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">';
   if(!filtradosRec.length){el.innerHTML=html+'<div class="empty"><p>Sin resultados</p></div>';return;}
   html+=filtradosRec.map(p=>{
     const recs=recetas.filter(r=>r.producto_id===p.id);
@@ -3300,7 +3310,7 @@ function renderStockGraneles(){
     <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Graneles (${filtradosGL.length})</span>
     <button onclick="abrirNuevoGranel()" style="display:flex;align-items:center;gap:5px;padding:6px 12px;background:var(--w);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">+ Nuevo</button>
   </div>
-  <input type="text" id="busq-stock-gl" placeholder="🔍 Buscar granel..." oninput="renderStockGraneles()"
+  <input type="text" id="busq-stock-gl" placeholder="🔍 Buscar granel..." oninput="busqStock('busq-stock-gl',renderStockGraneles)"
     style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">`;
   if(!filtradosGL.length){
     el.innerHTML=html+`<div class="empty"><p>No hay graneles registrados.<br>Un granel es una mezcla base que luego se envasa para crear productos terminados.</p></div>`;
