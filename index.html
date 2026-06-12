@@ -717,6 +717,46 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 
 </div>
 
+<!-- MODAL CONFIGURACIÓN RECORDATORIOS -->
+<div class="mo" id="MCOBR" onclick="if(event.target===this)this.classList.remove('open')" style="z-index:200;">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit">⚙️ Configurar Recordatorios</div>
+    <div style="background:#eff6ff;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:.78rem;color:#1d4ed8;font-weight:600;">
+      Los recordatorios se envían automáticamente al abrir la app si hay pagos vencidos o próximos a vencer.
+    </div>
+    <div class="fg"><label>📱 WhatsApp del responsable (sin +51)</label>
+      <input type="tel" id="cobr-wa" class="minp" style="width:100%" placeholder="9XXXXXXXX"></div>
+    <div class="fg"><label>✉️ Correo del responsable</label>
+      <input type="email" id="cobr-email" class="minp" style="width:100%" placeholder="gerente@frostech.com"></div>
+    <div class="fg"><label>⏰ Días de tolerancia antes de alertar</label>
+      <input type="number" id="cobr-dias" class="minp" style="width:100%" placeholder="1" min="0" max="30" value="1"></div>
+    <div class="fg"><label>🔁 Repetir recordatorio cada X días</label>
+      <input type="number" id="cobr-rep" class="minp" style="width:100%" placeholder="3" min="1" max="30" value="3"></div>
+    <div class="fg"><label>📦 Días para alertar stock bajo</label>
+      <input type="number" id="cobr-stock" class="minp" style="width:100%" placeholder="1" min="1" max="7" value="1"></div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <button onclick="guardarConfigCobr()" style="flex:2;padding:13px;background:var(--a);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.9rem;font-weight:800;cursor:pointer;">✓ Guardar</button>
+      <button onclick="ejecutarRecordatorios(true)" style="flex:1;padding:13px;background:#25D366;color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.9rem;font-weight:800;cursor:pointer;">▶ Probar</button>
+    </div>
+    <div style="height:8px"></div>
+  </div>
+</div>
+
+<!-- MODAL RECORDATORIO PREVIEW -->
+<div class="mo" id="MPREV" onclick="if(event.target===this)this.classList.remove('open')" style="z-index:200;">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit">🔔 Recordatorios pendientes</div>
+    <div id="prev-list" style="max-height:60vh;overflow-y:auto;"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button onclick="enviarTodosRecordatorios()" style="flex:2;padding:13px;background:#25D366;color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.9rem;font-weight:800;cursor:pointer;">💬 Enviar todos por WA</button>
+      <button onclick="document.getElementById('MPREV').classList.remove('open')" style="flex:1;padding:13px;background:var(--bg);border:1.5px solid var(--bdr);color:var(--mu);border-radius:12px;font-family:inherit;font-size:.9rem;font-weight:800;cursor:pointer;">Cerrar</button>
+    </div>
+    <div style="height:8px"></div>
+  </div>
+</div>
+
 <!-- MODAL WHATSAPP -->
 <div class="mo" id="MWA" onclick="if(event.target===this)this.classList.remove('open')" style="z-index:200;">
   <div class="modal">
@@ -1971,6 +2011,7 @@ async function renderDash(){
       <div style="display:flex;gap:8px;margin-bottom:14px;">
         <button onclick="exportExcel()" style="flex:1;padding:10px;background:#217346;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.8rem;font-weight:800;cursor:pointer;">📊 Exportar Excel</button>
         <button onclick="exportDespachos()" style="flex:1;padding:10px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.8rem;font-weight:800;cursor:pointer;">📄 PDF Despachos</button>
+        <button onclick="abrirConfigCobr()" style="flex:1;padding:10px;background:#f59e0b;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.8rem;font-weight:800;cursor:pointer;">🔔 Recordatorios</button>
       </div>
       <div class="dash-sec">🏆 Top 5 Clientes</div>
       <div class="dash-card full">${topClis.map(([cid,tot])=>{const c=clis.find(x=>x.id===cid);const nom=c?(c.nombres||c.alias||cid):cid;return`<div class="dash-list-item"><div class="dash-list-name">${nom}</div><div class="dash-list-val">S/ ${tot.toFixed(0)}</div></div>`;}).join('')||'<p style="color:var(--mu);font-size:.8rem;text-align:center;padding:8px">Sin datos</p>'}</div>
@@ -5432,6 +5473,240 @@ async function deleteProveedor(){
     document.getElementById('MPROV').classList.remove('open');
   }catch(e){toast('Error: '+e.message,'err');}
 }
+
+// ═══════════════════════════════════════════════════════════
+// RECORDATORIOS AUTOMÁTICOS
+// ═══════════════════════════════════════════════════════════
+
+function getConfigCobr(){
+  return JSON.parse(localStorage.getItem('frostech_cobr')||'{"wa":"","email":"","dias":1,"rep":3,"stock":1}');
+}
+
+function abrirConfigCobr(){
+  var cfg=getConfigCobr();
+  document.getElementById('cobr-wa').value=cfg.wa||'';
+  document.getElementById('cobr-email').value=cfg.email||'';
+  document.getElementById('cobr-dias').value=cfg.dias||1;
+  document.getElementById('cobr-rep').value=cfg.rep||3;
+  document.getElementById('cobr-stock').value=cfg.stock||1;
+  document.getElementById('MCOBR').classList.add('open');
+}
+
+function guardarConfigCobr(){
+  var cfg={
+    wa:document.getElementById('cobr-wa').value.trim(),
+    email:document.getElementById('cobr-email').value.trim(),
+    dias:parseInt(document.getElementById('cobr-dias').value)||1,
+    rep:parseInt(document.getElementById('cobr-rep').value)||3,
+    stock:parseInt(document.getElementById('cobr-stock').value)||1
+  };
+  localStorage.setItem('frostech_cobr',JSON.stringify(cfg));
+  toast('✓ Configuración guardada','ok');
+  document.getElementById('MCOBR').classList.remove('open');
+}
+
+function calcularRecordatorios(){
+  var cfg=getConfigCobr();
+  var hoyStr=hoy();
+  var hoyDate=new Date(hoyStr);
+  var alertas=[];
+  var historial=JSON.parse(localStorage.getItem('frostech_cobr_hist')||'{}');
+
+  ventas.forEach(function(v){
+    if(!v.fecha_estimada_pago) return;
+    if(v.estado==='COMPLETADO'||v.estado==='ANULADO') return;
+    var ab=getAb(v.id);
+    var total=parseFloat(v.total||0);
+    if(ab>=total) return; // Ya pagó
+
+    var fechaPago=new Date(v.fecha_estimada_pago);
+    var diffDias=Math.floor((hoyDate-fechaPago)/86400000);
+    var c=clis.find(function(x){return x.id===v.cliente_id;});
+    var nomCli=c?(c.nombres||c.alias||'?'):'?';
+    var telCli=c?c.telefono||'':'';
+    var pendiente=(total-ab).toFixed(2);
+
+    // Vencido
+    if(diffDias>=cfg.dias){
+      var ultimoEnvio=historial[v.id];
+      var debeEnviar=true;
+      if(ultimoEnvio){
+        var diasDesdeUltimo=Math.floor((hoyDate-new Date(ultimoEnvio))/86400000);
+        if(diasDesdeUltimo<cfg.rep) debeEnviar=false;
+      }
+      if(debeEnviar){
+        alertas.push({
+          tipo:'vencido',
+          venta_id:v.id,
+          cliente:nomCli,
+          tel:telCli,
+          vendedor:v.vendedor||'',
+          pendiente:pendiente,
+          dias:diffDias,
+          fecha_pago:v.fecha_estimada_pago
+        });
+      }
+    }
+    // Por vencer en 2 días
+    else if(diffDias>=-2&&diffDias<cfg.dias){
+      alertas.push({
+        tipo:'proximo',
+        venta_id:v.id,
+        cliente:nomCli,
+        tel:telCli,
+        vendedor:v.vendedor||'',
+        pendiente:pendiente,
+        dias:Math.abs(diffDias),
+        fecha_pago:v.fecha_estimada_pago
+      });
+    }
+  });
+
+  // Stock bajo
+  var stockAlertas=[];
+  prods.forEach(function(p){
+    if(parseFloat(p.stock_actual||0)<=parseFloat(p.stock_minimo||0)&&parseFloat(p.stock_minimo||0)>0){
+      stockAlertas.push({nombre:p.nombre,stock:p.stock_actual,minimo:p.stock_minimo,unidad:p.unidad||'UND'});
+    }
+  });
+  materias.forEach(function(m){
+    if(parseFloat(m.stock_actual||0)<=parseFloat(m.stock_minimo||0)&&parseFloat(m.stock_minimo||0)>0){
+      stockAlertas.push({nombre:m.nombre,stock:m.stock_actual,minimo:m.stock_minimo,unidad:m.unidad||'UND'});
+    }
+  });
+
+  return{cobros:alertas,stock:stockAlertas};
+}
+
+async function ejecutarRecordatorios(manual){
+  var cfg=getConfigCobr();
+  if(!cfg.wa&&!cfg.email){
+    if(manual) abrirConfigCobr();
+    return;
+  }
+  var result=calcularRecordatorios();
+  if(!result.cobros.length&&!result.stock.length){
+    if(manual) toast('✅ Sin recordatorios pendientes','ok');
+    return;
+  }
+  // Mostrar preview
+  mostrarPreviewRecordatorios(result);
+}
+
+function mostrarPreviewRecordatorios(result){
+  var el=document.getElementById('prev-list');
+  var html='';
+
+  if(result.cobros.length){
+    html+='<div style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;padding:8px 0;border-bottom:1px solid var(--bdr);margin-bottom:8px;">💰 Cobranzas ('+result.cobros.length+')</div>';
+    result.cobros.forEach(function(a){
+      var badge=a.tipo==='vencido'?
+        '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:6px;font-size:.65rem;font-weight:800;">VENCIDO '+a.dias+' día'+(a.dias!==1?'s':'')+'</span>':
+        '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:6px;font-size:.65rem;font-weight:800;">VENCE EN '+a.dias+' día'+(a.dias!==1?'s':'')+'</span>';
+      html+='<div style="background:#fff;border:1.5px solid var(--bdr);border-radius:10px;padding:10px 12px;margin-bottom:8px;">';
+      html+=badge;
+      html+='<div style="font-size:.85rem;font-weight:800;margin-top:4px;">'+a.cliente+'</div>';
+      html+='<div style="font-size:.75rem;color:var(--mu);margin-top:2px;">Vendedor: <b>'+a.vendedor+'</b> · Debe: <b style="color:var(--d)">S/ '+a.pendiente+'</b></div>';
+      html+='<div style="font-size:.72rem;color:var(--mu);">Fecha pago: '+a.fecha_pago+(a.tel?' · 📞 '+a.tel:'')+'</div>';
+      html+='</div>';
+    });
+  }
+
+  if(result.stock.length){
+    html+='<div style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;padding:8px 0;border-bottom:1px solid var(--bdr);margin:8px 0;">📦 Stock bajo ('+result.stock.length+')</div>';
+    result.stock.forEach(function(s){
+      html+='<div style="background:#fff;border:1.5px solid var(--w);border-radius:10px;padding:8px 12px;margin-bottom:6px;font-size:.78rem;">';
+      html+='<b>'+s.nombre+'</b> — Stock: <span style="color:var(--d);font-weight:800;">'+s.stock+' '+s.unidad+'</span> (mín: '+s.minimo+')';
+      html+='</div>';
+    });
+  }
+
+  document.getElementById('prev-list').innerHTML=html;
+  document.getElementById('MPREV').classList.add('open');
+  window._recordatoriosPendientes=result;
+}
+
+function enviarTodosRecordatorios(){
+  var result=window._recordatoriosPendientes;
+  if(!result) return;
+  var cfg=getConfigCobr();
+  var NL=String.fromCharCode(10);
+  var historial=JSON.parse(localStorage.getItem('frostech_cobr_hist')||'{}');
+  var hoyStr=hoy();
+
+  // Construir mensaje WhatsApp
+  var msg='*FROSTECH - REPORTE DE COBRANZAS*'+NL;
+  msg+='Fecha: '+hoyStr+NL;
+  msg+='━━━━━━━━━━━━━━━━━━━━'+NL;
+
+  if(result.cobros.length){
+    var vencidos=result.cobros.filter(function(a){return a.tipo==='vencidos';});
+    var proximos=result.cobros.filter(function(a){return a.tipo==='proximo';});
+
+    if(result.cobros.filter(function(a){return a.tipo==='vencido';}).length){
+      msg+='🚨 *PAGOS VENCIDOS:*'+NL;
+      result.cobros.filter(function(a){return a.tipo==='vencido';}).forEach(function(a){
+        msg+='• '+a.cliente+' ('+a.vendedor+')'+NL;
+        msg+='  Debe: S/ '+a.pendiente+' — '+a.dias+' día'+(a.dias!==1?'s':'')+' vencido'+NL;
+        if(a.tel) msg+='  Tel: '+a.tel+NL;
+      });
+      msg+='━━━━━━━━━━━━━━━━━━━━'+NL;
+    }
+    if(result.cobros.filter(function(a){return a.tipo==='proximo';}).length){
+      msg+='⚠️ *POR VENCER:*'+NL;
+      result.cobros.filter(function(a){return a.tipo==='proximo';}).forEach(function(a){
+        msg+='• '+a.cliente+' ('+a.vendedor+')'+NL;
+        msg+='  Debe: S/ '+a.pendiente+' — vence en '+a.dias+' día'+(a.dias!==1?'s':'')+NL;
+        if(a.tel) msg+='  Tel: '+a.tel+NL;
+      });
+      msg+='━━━━━━━━━━━━━━━━━━━━'+NL;
+    }
+  }
+
+  if(result.stock.length){
+    msg+='📦 *STOCK BAJO:*'+NL;
+    result.stock.forEach(function(s){
+      msg+='• '+s.nombre+': '+s.stock+' '+s.unidad+' (mín: '+s.minimo+')'+NL;
+    });
+    msg+='━━━━━━━━━━━━━━━━━━━━'+NL;
+  }
+
+  msg+='_FROSTECH | Sistema automático_';
+
+  // Enviar por WhatsApp
+  if(cfg.wa){
+    var tel=cfg.wa.replace(/\D/g,'');
+    if(tel.length===9) tel='51'+tel;
+    window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(msg),'_blank');
+  }
+
+  // Enviar por correo (mailto)
+  if(cfg.email){
+    var asunto='FROSTECH - Reporte Cobranzas '+hoyStr;
+    var body=msg.replace(/\*/g,'').replace(/━/g,'-');
+    window.open('mailto:'+cfg.email+'?subject='+encodeURIComponent(asunto)+'&body='+encodeURIComponent(body));
+  }
+
+  // Registrar envío en historial
+  result.cobros.forEach(function(a){
+    historial[a.venta_id]=hoyStr;
+  });
+  localStorage.setItem('frostech_cobr_hist',JSON.stringify(historial));
+
+  toast('✅ Recordatorios enviados','ok');
+  document.getElementById('MPREV').classList.remove('open');
+}
+
+// ── Ejecutar automáticamente al cargar ──
+const _initOldCobr=init;
+init=async function(){
+  await _initOldCobr();
+  // Ejecutar recordatorios automáticamente solo si hay configuración
+  var cfg=getConfigCobr();
+  if(cfg.wa||cfg.email){
+    setTimeout(function(){ejecutarRecordatorios(false);},3000);
+  }
+};
 
 initLogin();
 </script>
