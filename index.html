@@ -2041,46 +2041,75 @@ async function guardarProd(){await saveProd();}
 async function guardarCli(){await saveCliente();}
 
 // ── DASHBOARD ─────────────────────────────────────────────
+// ── DASHBOARD: estado del mes seleccionado ────────────────
+let dashMes=new Date().getMonth()+1, dashAnio=new Date().getFullYear();
+function dashCambiarMes(delta){
+  dashMes+=delta;
+  if(dashMes<1){dashMes=12;dashAnio--;}
+  if(dashMes>12){dashMes=1;dashAnio++;}
+  renderDash();
+}
+function dashIrHoy(){
+  var n=new Date();
+  dashMes=n.getMonth()+1; dashAnio=n.getFullYear();
+  renderDash();
+}
+
 async function renderDash(){
   const el=document.getElementById('dash-resumen');
   el.innerHTML='<div class="empty"><p>Calculando...</p></div>';
   try{
+    const mesesNom=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
     const now=new Date();
-    const mesActual=now.getMonth()+1;
-    const anioActual=now.getFullYear();
-    const vMes=ventas.filter(v=>{const d=new Date(v.fecha||v.created_at);return d.getMonth()+1===mesActual&&d.getFullYear()===anioActual;});
+    const esMesActual=(dashMes===now.getMonth()+1&&dashAnio===now.getFullYear());
+    const labelMes=mesesNom[dashMes-1]+' '+dashAnio;
+    // Filtro por mes seguro ante zona horaria: usa la fecha tal cual (sin new Date)
+    const enMes=function(v){
+      var f=(v.fecha||v.created_at||'').slice(0,10);
+      var p=f.split('-');
+      return p.length>=2&&parseInt(p[1],10)===dashMes&&parseInt(p[0],10)===dashAnio;
+    };
+    const vMes=ventas.filter(enMes);
     const totalMes=vMes.reduce((s,v)=>s+parseFloat(v.total||0),0);
-    const pendientes=ventas.filter(v=>parseFloat(v.total||0)>getAb(v.id));
-    const montoPendiente=pendientes.reduce((s,v)=>s+(parseFloat(v.total||0)-getAb(v.id)),0);
+    const pendientesMes=vMes.filter(v=>parseFloat(v.total||0)>getAb(v.id));
+    const montoPendiente=pendientesMes.reduce((s,v)=>s+(parseFloat(v.total||0)-getAb(v.id)),0);
+    const hoyStr=new Date().toISOString().split('T')[0];
+    const vencidas=vMes.filter(v=>v.fecha_estimada_pago&&v.fecha_estimada_pago<hoyStr&&parseFloat(v.total||0)>getAb(v.id));
     const cliTotales={};
-    ventas.forEach(v=>{if(!cliTotales[v.cliente_id])cliTotales[v.cliente_id]=0;cliTotales[v.cliente_id]+=parseFloat(v.total||0);});
+    vMes.forEach(v=>{if(!cliTotales[v.cliente_id])cliTotales[v.cliente_id]=0;cliTotales[v.cliente_id]+=parseFloat(v.total||0);});
     const topClis=Object.entries(cliTotales).sort((a,b)=>b[1]-a[1]).slice(0,5);
     const vendTot={};
-    ventas.forEach(v=>{if(!vendTot[v.vendedor])vendTot[v.vendedor]={ventas:0,total:0};vendTot[v.vendedor].ventas++;vendTot[v.vendedor].total+=parseFloat(v.total||0);});
-    const hoyStr=new Date().toISOString().split('T')[0];
-    const vencidas=ventas.filter(v=>v.fecha_estimada_pago&&v.fecha_estimada_pago<hoyStr&&parseFloat(v.total||0)>getAb(v.id));
+    vMes.forEach(v=>{if(!vendTot[v.vendedor])vendTot[v.vendedor]={ventas:0,total:0};vendTot[v.vendedor].ventas++;vendTot[v.vendedor].total+=parseFloat(v.total||0);});
+    const ticketProm=vMes.length?totalMes/vMes.length:0;
+
     el.innerHTML=`
-      <div style="padding:4px 0 14px;font-size:.82rem;font-weight:800;color:var(--mu);">📅 ${now.toLocaleDateString('es-PE',{month:'long',year:'numeric'}).toUpperCase()}</div>
+      <div style="display:flex;align-items:center;gap:8px;padding:4px 0 14px;">
+        <button onclick="dashCambiarMes(-1)" style="width:42px;height:42px;border-radius:12px;border:1.5px solid var(--bdr);background:#fff;color:var(--p);font-size:1.5rem;font-weight:900;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;line-height:1;">‹</button>
+        <div onclick="dashIrHoy()" style="flex:1;text-align:center;cursor:pointer;user-select:none;">
+          <div style="font-size:1rem;font-weight:900;color:var(--txt);letter-spacing:-.3px;">📅 ${labelMes.toUpperCase()}</div>
+          <div style="font-size:.66rem;font-weight:800;color:${esMesActual?'var(--mu)':'var(--p)'};margin-top:1px;text-transform:uppercase;letter-spacing:.3px;">${esMesActual?'Mes actual':'↺ Volver a hoy'}</div>
+        </div>
+        <button onclick="dashCambiarMes(1)" ${esMesActual?'disabled':''} style="width:42px;height:42px;border-radius:12px;border:1.5px solid var(--bdr);background:#fff;color:var(--p);font-size:1.5rem;font-weight:900;cursor:${esMesActual?'default':'pointer'};opacity:${esMesActual?'.3':'1'};flex-shrink:0;display:flex;align-items:center;justify-content:center;line-height:1;">›</button>
+      </div>
       <div class="dash-grid">
-        <div class="dash-card"><div class="dash-icon">💰</div><div class="dash-val green">S/ ${totalMes.toFixed(0)}</div><div class="dash-lbl">Ventas del mes</div><div style="font-size:.7rem;color:var(--mu);margin-top:2px">${vMes.length} pedidos</div></div>
-        <div class="dash-card"><div class="dash-icon">⏳</div><div class="dash-val red">S/ ${montoPendiente.toFixed(0)}</div><div class="dash-lbl">Por cobrar</div><div style="font-size:.7rem;color:var(--mu);margin-top:2px">${pendientes.length} ventas</div></div>
+        <div class="dash-card"><div class="dash-icon">💰</div><div class="dash-val green">S/ ${totalMes.toFixed(0)}</div><div class="dash-lbl">Ventas del mes</div><div style="font-size:.7rem;color:var(--mu);margin-top:2px">${vMes.length} pedido${vMes.length===1?'':'s'}</div></div>
+        <div class="dash-card"><div class="dash-icon">⏳</div><div class="dash-val red">S/ ${montoPendiente.toFixed(0)}</div><div class="dash-lbl">Por cobrar</div><div style="font-size:.7rem;color:var(--mu);margin-top:2px">${pendientesMes.length} venta${pendientesMes.length===1?'':'s'}</div></div>
         <div class="dash-card"><div class="dash-icon">🚨</div><div class="dash-val orange">${vencidas.length}</div><div class="dash-lbl">Pagos vencidos</div></div>
-        <div class="dash-card"><div class="dash-icon">📦</div><div class="dash-val">${ventas.length}</div><div class="dash-lbl">Total ventas</div></div>
+        <div class="dash-card"><div class="dash-icon">🎯</div><div class="dash-val">S/ ${ticketProm.toFixed(0)}</div><div class="dash-lbl">Ticket promedio</div></div>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:14px;">
         <button onclick="abrirExportExcel()" style="flex:1;padding:10px;background:#217346;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.8rem;font-weight:800;cursor:pointer;">📊 Exportar Excel</button>
         <button onclick="exportDespachos()" style="flex:1;padding:10px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.8rem;font-weight:800;cursor:pointer;">📄 PDF Despachos</button>
         <button onclick="abrirConfigCobr()" style="flex:1;padding:10px;background:#f59e0b;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.8rem;font-weight:800;cursor:pointer;">🔔 Recordatorios</button>
       </div>
-      <div class="dash-sec">🏆 Top 5 Clientes</div>
-      <div class="dash-card full">${topClis.map(([cid,tot])=>{const c=clis.find(x=>x.id===cid);const nom=c?(c.nombres||c.alias||cid):cid;return`<div class="dash-list-item"><div class="dash-list-name">${nom}</div><div class="dash-list-val">S/ ${tot.toFixed(0)}</div></div>`;}).join('')||'<p style="color:var(--mu);font-size:.8rem;text-align:center;padding:8px">Sin datos</p>'}</div>
-      <div class="dash-sec">👤 Por Vendedor</div>
-      <div class="dash-card full">${Object.entries(vendTot).sort((a,b)=>b[1].total-a[1].total).map(([vend,d])=>`<div class="dash-list-item"><div><div class="dash-list-name">${vend}</div><div class="dash-list-sub">${d.ventas} venta${d.ventas>1?'s':''}</div></div><div class="dash-list-val">S/ ${d.total.toFixed(0)}</div></div>`).join('')||'<p style="color:var(--mu);font-size:.8rem;text-align:center;padding:8px">Sin datos</p>'}</div>
+      <div class="dash-sec">🏆 Top 5 Clientes · ${mesesNom[dashMes-1]}</div>
+      <div class="dash-card full">${topClis.map(([cid,tot])=>{const c=clis.find(x=>x.id===cid);const nom=c?(c.nombres||c.alias||cid):cid;return`<div class="dash-list-item"><div class="dash-list-name">${nom}</div><div class="dash-list-val">S/ ${tot.toFixed(0)}</div></div>`;}).join('')||'<p style="color:var(--mu);font-size:.8rem;text-align:center;padding:8px">Sin ventas este mes</p>'}</div>
+      <div class="dash-sec">👤 Por Vendedor · ${mesesNom[dashMes-1]}</div>
+      <div class="dash-card full">${Object.entries(vendTot).sort((a,b)=>b[1].total-a[1].total).map(([vend,d])=>`<div class="dash-list-item"><div><div class="dash-list-name">${vend}</div><div class="dash-list-sub">${d.ventas} venta${d.ventas>1?'s':''}</div></div><div class="dash-list-val">S/ ${d.total.toFixed(0)}</div></div>`).join('')||'<p style="color:var(--mu);font-size:.8rem;text-align:center;padding:8px">Sin ventas este mes</p>'}</div>
       ${vencidas.length?`<div class="dash-sec">🚨 Pagos Vencidos</div><div class="dash-card full">${vencidas.map(v=>{const c=clis.find(x=>x.id===v.cliente_id);const nom=c?(c.nombres||c.alias):v.cliente_id;const pend=parseFloat(v.total||0)-getAb(v.id);return`<div class="dash-list-item"><div><div class="dash-list-name">${nom}</div><div class="dash-list-sub">Venció: ${v.fecha_estimada_pago}</div></div><div class="dash-list-val" style="color:var(--d)">S/ ${pend.toFixed(0)}</div></div>`;}).join('')}</div>`:''}
       <div style="height:16px"></div>`;
   }catch(e){el.innerHTML=`<div class="empty"><p>Error: ${e.message}</p></div>`;}
 }
-
 // ── OVERRIDE goS para dashboard ───────────────────────────
 const _goSBase=goS;
 goS=function(n){
@@ -2090,7 +2119,7 @@ goS=function(n){
   document.getElementById('sc-'+n).classList.add('active');
   document.getElementById('ni-'+n).classList.add('active');
   document.getElementById('fab-clientes').style.display=n==='clientes'?'block':'none';
-  if(n==='dashboard') renderDash();
+  if(n==='dashboard'){var _dn=new Date();dashMes=_dn.getMonth()+1;dashAnio=_dn.getFullYear();renderDash();}
 };
 
 // ── COMPROBANTE ───────────────────────────────────────────
