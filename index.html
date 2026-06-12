@@ -3333,7 +3333,7 @@ function renderStockGraneles(){
 
 function abrirNuevoGranel(){
   editGranelId=null;
-  ['gl-nombre','gl-stock','gl-minimo','gl-costo'].forEach(id=>document.getElementById(id).value='');
+  ['gl-nombre','gl-stock','gl-minimo'].forEach(id=>{var e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('gl-unidad').value='LT';
   document.getElementById('MGL-tit').textContent='🧪 Nuevo Granel';
   document.getElementById('btnDGL').style.display='none';
