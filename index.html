@@ -81,7 +81,8 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 .ft{font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.8px;margin-bottom:11px;}
 .fg{margin-bottom:11px;}
 .fg label{display:block;font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}
-.fg select,.fg input,.fg textarea{width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;background:#fff;outline:none;appearance:none;}
+.fg select,.fg input:not([type=checkbox]):not([type=radio]),.fg textarea{width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;background:#fff;outline:none;appearance:none;}
+.fg input[type=checkbox],.fg input[type=radio]{appearance:auto;-webkit-appearance:auto;width:18px;height:18px;flex-shrink:0;cursor:pointer;accent-color:var(--p);}
 .fg select:focus,.fg input:focus,.fg textarea:focus{border-color:var(--p);}
 .fg textarea{resize:none;height:65px;}
 
