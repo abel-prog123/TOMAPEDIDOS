@@ -5787,6 +5787,8 @@ async function ejecutarExportExcel(){
   var inclAnuladas=document.getElementById('exp-anuladas').checked;
   var inclVentas=document.getElementById('exp-ventas').checked;
   var inclDetalle=document.getElementById('exp-detalle').checked;
+
+  if(!inclVentas&&!inclDetalle){toast('Selecciona al menos una opción','err');return;}
   toast('Generando Excel...','');
 
   // Filtrar ventas por período
@@ -5795,11 +5797,15 @@ async function ejecutarExportExcel(){
     if(periodo==='todo') return true;
     var fecha=v.fecha||'';
     if(!fecha) return false;
-    var d=new Date(fecha);
     if(periodo==='mes'){
       var mes=parseInt(document.getElementById('export-mes').value);
       var anio=parseInt(document.getElementById('export-anio').value);
-      return d.getMonth()+1===mes&&d.getFullYear()===anio;
+      // Parsear fecha manualmente para evitar problemas de timezone
+      var parts=fecha.split('-');
+      if(parts.length===3){
+        return parseInt(parts[1])===mes&&parseInt(parts[0])===anio;
+      }
+      return false;
     }
     if(periodo==='rango'){
       var desde=document.getElementById('export-desde').value;
@@ -5809,19 +5815,24 @@ async function ejecutarExportExcel(){
     return true;
   });
 
-  if(!ventasFilt.length){toast('No hay ventas en el período seleccionado','err');return;}
+  if(!ventasFilt.length){
+    toast('No hay ventas en el período seleccionado','err');
+    return;
+  }
 
   var NL=String.fromCharCode(10);
   function toCSV(rows){
     return rows.map(function(r){
-      return r.map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}).join(',');
+      return r.map(function(val){
+        return '"'+String(val==null?'':val).replace(/"/g,'""')+'"';
+      }).join(',');
     }).join(NL);
   }
 
   // Etiqueta del período
+  var meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   var label='';
   if(periodo==='mes'){
-    var meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
     label=meses[parseInt(document.getElementById('export-mes').value)-1]+'_'+document.getElementById('export-anio').value;
   } else if(periodo==='rango'){
     label=document.getElementById('export-desde').value+'_al_'+document.getElementById('export-hasta').value;
@@ -5830,33 +5841,38 @@ async function ejecutarExportExcel(){
   }
 
   var bom='﻿';
+  var delay=0;
 
-  // CSV Ventas resumen
+  // CSV 1: Ventas resumen
   if(inclVentas){
     var ventasRows=[['ID','FECHA','CLIENTE','RUC','VENDEDOR','FORMA_PAGO','COMPROBANTE','ESTADO','TOTAL','ABONADO','PENDIENTE','FECHA_ENTREGA','FECHA_PAGO_REAL','OBSERVACIONES']];
     ventasFilt.forEach(function(v){
       var c=clis.find(function(x){return x.id===v.cliente_id;});
       var ab=getAb(v.id);
       ventasRows.push([
-        v.id,v.fecha||'',
+        v.id, v.fecha||'',
         c?c.nombres||c.alias||'':'',
         c?c.dni_ruc||'':'',
-        v.vendedor||'',v.forma_pago||'',v.comprobante||'',v.estado||'',
+        v.vendedor||'', v.forma_pago||'', v.comprobante||'', v.estado||'',
         parseFloat(v.total||0).toFixed(2),
         ab.toFixed(2),
         (parseFloat(v.total||0)-ab).toFixed(2),
-        v.fecha_entrega||'',v.fecha_pago_real||'',
+        v.fecha_entrega||'', v.fecha_pago_real||'',
         (v.observaciones||'').replace(/,/g,';')
       ]);
     });
-    var b1=new Blob([bom+toCSV(ventasRows)],{type:'text/csv;charset=utf-8;'});
-    var u1=URL.createObjectURL(b1);
-    var a1=document.createElement('a');
-    a1.href=u1;a1.download='Frostech_Ventas_'+label+'.csv';
-    a1.click();URL.revokeObjectURL(u1);
+    setTimeout(function(){
+      var blob=new Blob([bom+toCSV(ventasRows)],{type:'text/csv;charset=utf-8;'});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a');
+      a.href=url; a.download='Frostech_Ventas_'+label+'.csv';
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+    }, delay);
+    delay+=600;
   }
 
-  // CSV Detalle
+  // CSV 2: Detalle ventas
   if(inclDetalle){
     var allDets=await sbGet('detalle_ventas');
     var idsVentas=ventasFilt.map(function(v){return v.id;});
@@ -5867,26 +5883,27 @@ async function ejecutarExportExcel(){
       var c=v?clis.find(function(x){return x.id===v.cliente_id;}):null;
       var pr=prods.find(function(x){return x.id===d.producto_id;});
       detRows.push([
-        d.id,d.venta_id,
+        d.id, d.venta_id,
         v?v.fecha||'':'',
         c?c.nombres||c.alias||'':'',
         v?v.vendedor||'':'',
         pr?pr.nombre||d.producto_id:d.producto_id||'',
         pr?pr.categoria||'':'',
-        d.cantidad,d.precio_base,d.precio_final,d.total,d.comision
+        d.cantidad, d.precio_base, d.precio_final, d.total, d.comision
       ]);
     });
     setTimeout(function(){
-      var b2=new Blob([bom+toCSV(detRows)],{type:'text/csv;charset=utf-8;'});
-      var u2=URL.createObjectURL(b2);
-      var a2=document.createElement('a');
-      a2.href=u2;a2.download='Frostech_Detalle_'+label+'.csv';
-      a2.click();URL.revokeObjectURL(u2);
-    },800);
+      var blob=new Blob([bom+toCSV(detRows)],{type:'text/csv;charset=utf-8;'});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a');
+      a.href=url; a.download='Frostech_Detalle_'+label+'.csv';
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+    }, delay);
   }
 
   document.getElementById('MEXPORT').classList.remove('open');
-  toast('✅ Excel generado — '+ventasFilt.length+' ventas','ok');
+  toast('✅ '+ventasFilt.length+' ventas exportadas — '+label,'ok');
 }
 
 initLogin();
