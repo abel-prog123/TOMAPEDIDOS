@@ -2903,9 +2903,8 @@ function renderStockRecetas(){
   const el=document.getElementById('stock-recetas');
   const qrec=(document.getElementById('busq-stock-rec')||{value:''}).value.toLowerCase();
   const filtradosRec=qrec?prods.filter(p=>(p.nombre||'').toLowerCase().includes(qrec)):prods;
-  let html=`<div style="margin-bottom:8px;font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Recetas por producto (${filtradosRec.length})</div>
-  <input type="text" id="busq-stock-rec" placeholder="🔍 Buscar producto..." oninput="renderStockRecetas()"
-    style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">`;
+  var html='<div style="margin-bottom:8px;font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Recetas por producto ('+filtradosRec.length+')</div>';
+  html+='<input type="text" id="busq-stock-rec" placeholder="🔍 Buscar producto..." oninput="renderStockRecetas()" style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">';
   if(!filtradosRec.length){el.innerHTML=html+'<div class="empty"><p>Sin resultados</p></div>';return;}
   html+=filtradosRec.map(p=>{
     const recs=recetas.filter(r=>r.producto_id===p.id);
@@ -3441,10 +3440,11 @@ async function deleteRecetaPGItem(recId,prodId){
 }
 
 // ── ACTUALIZAR renderStockRecetas PARA MOSTRAR AMBOS TIPOS ──
-function renderStockRecetas(){
+function renderStockRecetas_OLD_DISABLED(){
   const el=document.getElementById('stock-recetas');
-  let html=`<div style="margin-bottom:10px;font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Recetas de productos terminados</div>`;
-  html+=filtrados.map(p=>{
+  let html='';
+  const filtradosLocal=prods;
+  html+=filtradosLocal.map(p=>{
     const recs=recetas.filter(r=>r.producto_id===p.id);
     const granelRecs=recs.filter(r=>r.granel_id);
     const mpRecs=recs.filter(r=>!r.granel_id&&r.materia_prima_id);
