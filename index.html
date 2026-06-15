@@ -1104,6 +1104,12 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
       <input type="file" id="fi-mp-foto" accept="image/*" onchange="previewMPPhoto()" style="display:none">
     </div>
     <div class="fg"><label>Nombre *</label><input type="text" id="mp2-nombre" class="minp" style="width:100%"></div>
+    <div class="fg"><label>Tipo *</label>
+      <select id="mp2-tipo" class="msel">
+        <option value="Insumo">🧪 Insumo (entra en la fórmula del granel)</option>
+        <option value="Envase">📦 Envase (no entra en fórmula, se usa al envasar)</option>
+      </select>
+    </div>
     <div class="fg"><label>Unidad de medida</label>
       <select id="mp2-unidad" class="msel">
         <option value="UND">Unidades</option><option value="LT">Litros</option>
@@ -1140,7 +1146,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="mtit" id="MMOV-tit">📥 Entrada de Stock</div>
     <div class="msub" id="MMOV-sub"></div>
     <div class="fg"><label>Tipo</label>
-      <select id="mov-tipo" class="msel" onchange="toggleMermaMotivo()">
+      <select id="mov-tipo" class="msel" onchange="toggleMermaMotivo();actualizarLabelMov()">
         <option value="ENTRADA">ENTRADA (compra/producción)</option>
         <option value="SALIDA">SALIDA (uso/producción)</option>
         <option value="MERMA">MERMA (pérdida/evaporación/derrame)</option>
@@ -1159,7 +1165,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
         </select>
       </div>
     </div>
-    <div class="fg"><label>Cantidad</label><input type="number" id="mov-qty" step="0.01" min="0" class="minp" style="width:100%" placeholder="0"></div>
+    <div class="fg"><label id="mov-qty-lbl">Cantidad</label><input type="number" id="mov-qty" step="0.01" min="0" class="minp" style="width:100%" placeholder="0"></div>
     <div class="fg"><label>Fecha</label><input type="date" id="mov-fecha" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;"></div>
     <div class="fg"><label>Nota (opcional)</label><input type="text" id="mov-nota" class="minp" style="width:100%" placeholder="Ej: Compra proveedor X"></div>
     <button class="mconf green" onclick="saveMov()" id="btnMOV">✓ REGISTRAR</button>
@@ -2980,8 +2986,8 @@ function renderStockProds(){
         <div class="stock-nombre">${p.nombre}</div>
         <div class="stock-unidad">${p.unidad||'UND'} · Mín: ${min}</div>
         <div class="stock-actions">
-          <button class="stock-btn entrada" onclick="abrirMov('prod','${p.id}','${p.nombre}','entrada')">+ Entrada</button>
-          <button class="stock-btn salida" onclick="abrirMov('prod','${p.id}','${p.nombre}','salida')">- Salida</button>
+          <button class="stock-btn entrada" onclick="abrirCalcProd('${p.id}')">🏭 Producir</button>
+          <button class="stock-btn edit" onclick="abrirMov('prod','${p.id}','${p.nombre}','ajuste')">⚖️ Ajuste</button>
           <button class="stock-btn edit" onclick="editStockProd('${p.id}')">⚙️ Config</button>
         </div>
       </div>
@@ -3000,18 +3006,9 @@ function renderStockMaterias(){
   const qmp=(document.getElementById('busq-stock-mp')||{value:''}).value.toLowerCase();
   const bajos=materias.filter(m=>parseFloat(m.stock_actual||0)<=parseFloat(m.stock_minimo||0)&&parseFloat(m.stock_minimo||0)>0);
   const filtradosMP=qmp?materias.filter(m=>(m.nombre||'').toLowerCase().includes(qmp)||(m.codigo||'').toLowerCase().includes(qmp)):materias;
-  let html='';
-  if(bajos.length&&!qmp){
-    html+=`<div class="alerta-banner"><span style="font-size:1.4rem">🚨</span><div class="alerta-banner-txt">${bajos.length} materia${bajos.length>1?'s primas':' prima'} con stock bajo</div></div>`;
-  }
-  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-    <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Materias primas (${filtradosMP.length})</span>
-    <button onclick="abrirNuevaMP()" style="display:flex;align-items:center;gap:5px;padding:6px 12px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">+ Nueva</button>
-  </div>
-  <input type="text" id="busq-stock-mp" placeholder="🔍 Buscar materia prima o SKU..." oninput="busqStock('busq-stock-mp',renderStockMaterias)"
-    style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">`;
-  if(!filtradosMP.length){el.innerHTML=html+'<div class="empty"><p>Sin resultados</p></div>';return;}
-  html+=filtradosMP.map(m=>{
+  const insumos=filtradosMP.filter(m=>(m.tipo||'Insumo')!=='Envase');
+  const envases=filtradosMP.filter(m=>(m.tipo||'Insumo')==='Envase');
+  function cardMP(m){
     const act=parseFloat(m.stock_actual||0);
     const min=parseFloat(m.stock_minimo||0);
     const cls=getStockClase(act,min);
@@ -3033,7 +3030,24 @@ function renderStockMaterias(){
         <div class="stock-min">stock actual</div>
       </div>
     </div>`;
-  }).join('');
+  }
+  let html='';
+  if(bajos.length&&!qmp){
+    html+=`<div class="alerta-banner"><span style="font-size:1.4rem">🚨</span><div class="alerta-banner-txt">${bajos.length} materia${bajos.length>1?'s primas':' prima'} con stock bajo</div></div>`;
+  }
+  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Materias primas (${filtradosMP.length})</span>
+    <button onclick="abrirNuevaMP()" style="display:flex;align-items:center;gap:5px;padding:6px 12px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">+ Nueva</button>
+  </div>
+  <input type="text" id="busq-stock-mp" placeholder="🔍 Buscar materia prima o SKU..." oninput="busqStock('busq-stock-mp',renderStockMaterias)"
+    style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">`;
+  if(!filtradosMP.length){el.innerHTML=html+'<div class="empty"><p>Sin resultados</p></div>';return;}
+  const secHdr=(txt,n)=>`<div style="display:flex;align-items:center;gap:6px;margin:6px 0 8px;"><span style="font-size:.8rem;font-weight:900;color:var(--txt);">${txt}</span><span style="font-size:.68rem;font-weight:800;color:#fff;background:var(--p);border-radius:10px;padding:1px 8px;">${n}</span></div>`;
+  html+=secHdr('🧪 Insumos',insumos.length);
+  html+=insumos.length?insumos.map(cardMP).join(''):'<p style="color:var(--mu);font-size:.78rem;padding:2px 0 10px;">Sin insumos en esta vista</p>';
+  html+=`<div style="height:8px"></div>`;
+  html+=secHdr('📦 Envases',envases.length);
+  html+=envases.length?envases.map(cardMP).join(''):'<p style="color:var(--mu);font-size:.78rem;padding:2px 0 10px;">Sin envases en esta vista</p>';
   el.innerHTML=html;
 }
 
@@ -3081,8 +3095,8 @@ function renderMovimientos(){
         <div class="mov-nombre">${nombre}</div>
         <div class="mov-meta">${m.fecha||''} ${m.nota?'· '+m.nota:''} ${m.referencia?'· '+m.referencia:''}</div>
       </div>
-      <div class="mov-qty" style="color:${tipo==='ENTRADA'?'var(--a)':'var(--d)'}">
-        ${tipo==='ENTRADA'?'+':'-'}${m.cantidad}
+      <div class="mov-qty" style="color:${tipo==='ENTRADA'?'var(--a)':(tipo==='AJUSTE'?'var(--mu)':'var(--d)')}">
+        ${tipo==='ENTRADA'?'+':(tipo==='AJUSTE'?(parseFloat(m.cantidad)>=0?'+':''):'-')}${m.cantidad}
       </div>
     </div>`;
   }).join('');
@@ -3105,37 +3119,55 @@ function editStockProd(id){
 function abrirMov(tipo, id, nombre, tipoMov){
   movTarget=id;
   movTargetType=tipo; // 'prod', 'mp', 'granel'
-  document.getElementById('MMOV-tit').textContent=tipoMov==='entrada'?'📥 Entrada de Stock':'📤 Salida de Stock';
+  var titulo=tipoMov==='entrada'?'📥 Entrada de Stock':tipoMov==='ajuste'?'⚖️ Ajuste de Inventario':'📤 Salida de Stock';
+  document.getElementById('MMOV-tit').textContent=titulo;
   document.getElementById('MMOV-sub').textContent=nombre;
-  document.getElementById('mov-tipo').value=tipoMov==='entrada'?'ENTRADA':'SALIDA';
-  document.getElementById('mov-qty').value='';
+  var mt=tipoMov==='entrada'?'ENTRADA':tipoMov==='ajuste'?'AJUSTE':'SALIDA';
+  document.getElementById('mov-tipo').value=mt;
   document.getElementById('mov-fecha').value=hoy();
   document.getElementById('mov-nota').value='';
+  if(tipoMov==='ajuste'){
+    var arr=tipo==='prod'?prods:tipo==='granel'?graneles:materias;
+    var it=arr.find(function(x){return x.id===id;});
+    document.getElementById('mov-qty').value=it?parseFloat(it.stock_actual||0):'';
+  } else {
+    document.getElementById('mov-qty').value='';
+  }
+  actualizarLabelMov();
+  toggleMermaMotivo();
   document.getElementById('MMOV').classList.add('open');
 }
 
+function actualizarLabelMov(){
+  var t=document.getElementById('mov-tipo').value;
+  var lbl=document.getElementById('mov-qty-lbl');
+  if(lbl) lbl.textContent=(t==='AJUSTE')?'Stock real contado (nuevo valor)':'Cantidad';
+}
+
 async function saveMov(){
-  const qty=parseFloat(document.getElementById('mov-qty').value);
-  if(!qty||qty<=0){toast('Ingresa una cantidad válida','err');return;}
+  const qtyRaw=parseFloat(document.getElementById('mov-qty').value);
   const tipo=document.getElementById('mov-tipo').value;
+  if(isNaN(qtyRaw)||(tipo!=='AJUSTE'&&qtyRaw<=0)){toast('Ingresa una cantidad válida','err');return;}
+  if(tipo==='AJUSTE'&&qtyRaw<0){toast('El stock no puede ser negativo','err');return;}
   const fecha=document.getElementById('mov-fecha').value;
-  const nota=document.getElementById('mov-nota').value;
+  let nota=document.getElementById('mov-nota').value;
+  if(tipo==='MERMA'){var mot=document.getElementById('merma-motivo').value;nota=(nota?nota+' · ':'')+'Merma: '+mot;}
   const btn=document.getElementById('btnMOV');
   btn.disabled=true;btn.textContent='⏳ Guardando...';
   try{
-    const mov={id:gid(),tipo,cantidad:qty,fecha,nota:nota||null};
-    if(movTargetType==='prod') mov.producto_id=movTarget;
-    else if(movTargetType==='granel') mov.materia_prima_id=movTarget; // reusar campo
-    else mov.materia_prima_id=movTarget;
-    await sbIns('movimientos_stock',mov);
-
-    // Actualizar stock
     const table=movTargetType==='prod'?'productos':movTargetType==='granel'?'graneles':'materias_primas';
     const arr=movTargetType==='prod'?prods:movTargetType==='granel'?graneles:materias;
     const item=arr.find(x=>x.id===movTarget);
+    const stockAnterior=item?parseFloat(item.stock_actual||0):0;
+    let nuevoStock, cantidadMov;
+    if(tipo==='ENTRADA'){ nuevoStock=stockAnterior+qtyRaw; cantidadMov=qtyRaw; }
+    else if(tipo==='AJUSTE'){ nuevoStock=qtyRaw; cantidadMov=qtyRaw-stockAnterior; }
+    else { nuevoStock=Math.max(0,stockAnterior-qtyRaw); cantidadMov=qtyRaw; }
+    const mov={id:gid(),tipo,cantidad:cantidadMov,fecha,nota:nota||null};
+    if(movTargetType==='prod') mov.producto_id=movTarget;
+    else mov.materia_prima_id=movTarget; // granel y mp comparten este campo
+    await sbIns('movimientos_stock',mov);
     if(item){
-      const stockAnterior=parseFloat(item.stock_actual||0);
-      const nuevoStock=tipo==='ENTRADA'?stockAnterior+qty:Math.max(0,stockAnterior-qty);
       await sbUpd(table,movTarget,{stock_actual:nuevoStock});
       item.stock_actual=nuevoStock;
     }
@@ -3152,8 +3184,9 @@ async function saveMov(){
 // Nueva/Editar Materia Prima
 function abrirNuevaMP(){
   editMPId=null;
-  ['mp2-nombre','mp2-stock','mp2-minimo','mp2-costo','mp2-codigo','mp2-entrega'].forEach(id=>document.getElementById(id).value='');
+  ['mp2-nombre','mp2-stock','mp2-minimo','mp2-costo','mp2-codigo','mp2-entrega'].forEach(id=>{var e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('mp2-unidad').value='UND';
+  document.getElementById('mp2-tipo').value='Insumo';
   poblarSelectProveedores('mp2-proveedor','');
   window._newMPPhoto=null;
   document.getElementById('mp-foto-prev').style.display='none';
@@ -3167,6 +3200,7 @@ function editMP(id){
   const m=materias.find(x=>x.id===id); if(!m) return;
   editMPId=id;
   document.getElementById('mp2-nombre').value=m.nombre||'';
+  document.getElementById('mp2-tipo').value=m.tipo||'Insumo';
   document.getElementById('mp2-unidad').value=m.unidad||'UND';
   document.getElementById('mp2-stock').value=m.stock_actual||0;
   document.getElementById('mp2-minimo').value=m.stock_minimo||0;
@@ -3209,6 +3243,7 @@ async function saveMP2(){
     }
     const data={
       nombre,
+      tipo:document.getElementById('mp2-tipo').value||'Insumo',
       unidad:document.getElementById('mp2-unidad').value,
       stock_actual:parseFloat(document.getElementById('mp2-stock').value)||0,
       stock_minimo:parseFloat(document.getElementById('mp2-minimo').value)||0,
@@ -3331,8 +3366,8 @@ function renderStockGraneles(){
         <div class="stock-nombre">${g.nombre}</div>
         <div class="stock-unidad">${g.unidad||'LT'} · Mín: ${min} · ${nReceta} ingrediente${nReceta!==1?'s':''} · Costo: S/ ${parseFloat(g.costo_unitario||0).toFixed(3)}/u</div>
         <div class="stock-actions">
-          <button class="stock-btn entrada" onclick="abrirMov('granel','${g.id}','${g.nombre}','entrada')">+ Entrada</button>
-          <button class="stock-btn salida" onclick="abrirMov('granel','${g.id}','${g.nombre}','salida')">- Salida</button>
+          <button class="stock-btn entrada" onclick="abrirCalc('${g.id}')">🏭 Producir</button>
+          <button class="stock-btn edit" onclick="abrirMov('granel','${g.id}','${g.nombre}','ajuste')">⚖️ Ajuste</button>
           <button class="stock-btn edit" onclick="abrirRecetaGranel('${g.id}','${g.nombre.replace(/'/g,"\\'")}')">📋 Receta</button>
           <button class="stock-btn edit" onclick="editGranel('${g.id}')">✏️</button>
         </div>
