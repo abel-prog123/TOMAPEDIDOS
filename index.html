@@ -178,6 +178,11 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 .mo{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:none;align-items:flex-end;}
 .mo.open{display:flex;}
 .modal{background:#fff;border-radius:20px 20px 0 0;padding:20px;width:100%;max-height:90vh;overflow-y:auto;}
+.cbx{position:relative;}
+.cbx-list{position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;border:1.5px solid var(--bdr);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.14);max-height:230px;overflow-y:auto;z-index:60;display:none;}
+.cbx-opt{padding:9px 12px;font-size:.85rem;cursor:pointer;border-bottom:1px solid var(--bg);}
+.cbx-opt:active,.cbx-opt:hover{background:var(--bg);}
+.cbx-new{color:var(--p);font-weight:800;position:sticky;bottom:0;background:#fff;border-top:1.5px solid var(--bdr);}
 .mh{width:40px;height:4px;background:var(--bdr);border-radius:4px;margin:0 auto 16px;}
 .mtit{font-size:1rem;font-weight:800;margin-bottom:3px;}
 .msub{font-size:.78rem;color:var(--mu);font-weight:600;margin-bottom:14px;}
@@ -1042,7 +1047,11 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     </div>
     <div id="receta-granel-list" style="margin-bottom:12px;"></div>
     <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
-      <select id="recgl-mp" class="msel" style="flex:2;min-width:140px;"></select>
+      <div class="cbx" style="flex:2;min-width:140px;">
+        <input type="text" id="recgl-mp-q" class="msel" autocomplete="off" placeholder="🔍 Buscar insumo..." oninput="cbxFilter('recgl-mp')" onfocus="cbxFilter('recgl-mp')" onblur="setTimeout(function(){cbxHide('recgl-mp')},180)">
+        <input type="hidden" id="recgl-mp">
+        <div id="recgl-mp-list" class="cbx-list"></div>
+      </div>
       <input type="number" id="recgl-qty" placeholder="Cant." step="0.01" min="0"
         style="flex:1;min-width:70px;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
       <select id="recgl-unidad" class="msel" style="flex:1;min-width:80px;">
@@ -1074,14 +1083,22 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <!-- Agregar granel -->
     <div style="font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;margin-bottom:6px;">Agregar Granel</div>
     <div style="display:flex;gap:8px;margin-bottom:10px;">
-      <select id="recpg-gl" class="msel" style="flex:2"></select>
+      <div class="cbx" style="flex:2">
+        <input type="text" id="recpg-gl-q" class="msel" autocomplete="off" placeholder="🔍 Buscar granel..." oninput="cbxFilter('recpg-gl')" onfocus="cbxFilter('recpg-gl')" onblur="setTimeout(function(){cbxHide('recpg-gl')},180)">
+        <input type="hidden" id="recpg-gl">
+        <div id="recpg-gl-list" class="cbx-list"></div>
+      </div>
       <input type="number" id="recpg-glqty" placeholder="Cant." step="0.01" min="0" style="flex:1;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
       <button onclick="addRecetaProdGranel('granel')" style="padding:9px 12px;background:var(--w);color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-size:.8rem;">+</button>
     </div>
     <!-- Agregar materia prima directa (envases, cajas, etc) -->
     <div style="font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;margin-bottom:6px;">Agregar Envase / Material</div>
     <div style="display:flex;gap:8px;margin-bottom:10px;">
-      <select id="recpg-mp" class="msel" style="flex:2"></select>
+      <div class="cbx" style="flex:2">
+        <input type="text" id="recpg-mp-q" class="msel" autocomplete="off" placeholder="🔍 Buscar envase..." oninput="cbxFilter('recpg-mp')" onfocus="cbxFilter('recpg-mp')" onblur="setTimeout(function(){cbxHide('recpg-mp')},180)">
+        <input type="hidden" id="recpg-mp">
+        <div id="recpg-mp-list" class="cbx-list"></div>
+      </div>
       <input type="number" id="recpg-mpqty" placeholder="Cant." step="0.01" min="0" style="flex:1;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
       <button onclick="addRecetaProdGranel('mp')" style="padding:9px 12px;background:var(--p);color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-size:.8rem;">+</button>
     </div>
@@ -3184,6 +3201,7 @@ async function saveMov(){
 // Nueva/Editar Materia Prima
 function abrirNuevaMP(){
   editMPId=null;
+  window._cbxPending=null;
   ['mp2-nombre','mp2-stock','mp2-minimo','mp2-costo','mp2-codigo','mp2-entrega'].forEach(id=>{var e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('mp2-unidad').value='UND';
   document.getElementById('mp2-tipo').value='Insumo';
@@ -3265,6 +3283,11 @@ async function saveMP2(){
     }
     renderStockMaterias();
     toast('✓ Materia prima guardada','ok');
+    if(!editMPId && window._cbxPending && window._cbxPending.kind==='mp'){
+      var pk=window._cbxPending.picker; window._cbxPending=null;
+      cbxReinit(pk); cbxPick(pk, data.id);
+    }
+    document.getElementById('MMP').style.zIndex='';
     document.getElementById('MMP').classList.remove('open');
   }catch(e){toast('Error: '+e.message,'err');}
   finally{btn.disabled=false;btn.textContent='✓ GUARDAR';}
@@ -3455,19 +3478,83 @@ async function deleteGranel(){
   }catch(e){toast('Error: '+e.message,'err');}
 }
 
+// ── COMBOBOX BUSCABLE (con opción de crear nuevo) ──────────
+var _cbx={};
+function _esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function cbxInit(id, items, opts){
+  opts=opts||{};
+  _cbx[id]={items:items||[], onNew:opts.onNew||null, onPick:opts.onPick||null, labelNew:opts.labelNew||'Crear nuevo', placeholder:opts.placeholder||'Buscar...'};
+  var q=document.getElementById(id+'-q'), h=document.getElementById(id);
+  if(q){q.value='';q.placeholder='🔍 '+_cbx[id].placeholder;}
+  if(h){h.value='';}
+  cbxHide(id);
+}
+function cbxFilter(id){
+  var d=_cbx[id]; if(!d) return;
+  var qEl=document.getElementById(id+'-q');
+  var q=(qEl?qEl.value:'').toLowerCase();
+  var items=d.items.filter(function(it){return (it.label||'').toLowerCase().indexOf(q)>=0;});
+  var list=document.getElementById(id+'-list'); if(!list) return;
+  var html=items.slice(0,80).map(function(it){
+    return '<div class="cbx-opt" onmousedown="cbxPick(\''+id+'\',\''+it.id+'\')">'+_esc(it.label)+'</div>';
+  }).join('');
+  if(!items.length) html+='<div style="padding:9px 12px;color:var(--mu);font-size:.8rem">Sin coincidencias</div>';
+  if(d.onNew) html+='<div class="cbx-opt cbx-new" onmousedown="cbxNew(\''+id+'\')">➕ '+_esc(d.labelNew)+(qEl&&qEl.value?' "'+_esc(qEl.value)+'"':'')+'</div>';
+  list.innerHTML=html;
+  list.style.display='block';
+}
+function cbxPick(id,val){
+  var d=_cbx[id]; if(!d) return;
+  var it=d.items.find(function(x){return x.id===val;});
+  var h=document.getElementById(id); if(h) h.value=val;
+  var q=document.getElementById(id+'-q'); if(q) q.value=it?it.label:'';
+  cbxHide(id);
+  if(d.onPick&&it) d.onPick(it);
+}
+function cbxNew(id){
+  cbxHide(id);
+  var d=_cbx[id];
+  if(d&&d.onNew){var q=document.getElementById(id+'-q'); d.onNew(q?q.value:'');}
+}
+function cbxHide(id){var l=document.getElementById(id+'-list'); if(l) l.style.display='none';}
+
+// Inicializadores de los 3 selectores de receta
+function initPickerRecglMp(){
+  var items=materias.filter(function(m){return (m.tipo||'Insumo')!=='Envase';})
+    .map(function(m){return {id:m.id,label:m.nombre+' ('+(m.unidad||'UND')+')'};});
+  cbxInit('recgl-mp', items, {placeholder:'Buscar insumo...', labelNew:'Crear insumo', 
+    onNew:function(q){nuevaMPDesdePicker('recgl-mp','Insumo',q);},
+    onPick:function(it){var mp=materias.find(function(m){return m.id===it.id;}); if(mp&&mp.unidad) document.getElementById('recgl-unidad').value=mp.unidad;}});
+}
+function initPickerRecpgGl(){
+  var items=graneles.map(function(g){return {id:g.id,label:g.nombre+' ('+(g.unidad||'LT')+')'};});
+  cbxInit('recpg-gl', items, {placeholder:'Buscar granel...'});
+}
+function initPickerRecpgMp(){
+  var items=materias.filter(function(m){return (m.tipo||'Insumo')==='Envase';})
+    .map(function(m){return {id:m.id,label:m.nombre+' ('+(m.unidad||'UND')+')'};});
+  cbxInit('recpg-mp', items, {placeholder:'Buscar envase...', labelNew:'Crear envase',
+    onNew:function(q){nuevaMPDesdePicker('recpg-mp','Envase',q);}});
+}
+function cbxReinit(pk){
+  if(pk==='recgl-mp') initPickerRecglMp();
+  else if(pk==='recpg-mp') initPickerRecpgMp();
+  else if(pk==='recpg-gl') initPickerRecpgGl();
+}
+function nuevaMPDesdePicker(pickerId, tipo, query){
+  abrirNuevaMP();
+  window._cbxPending={picker:pickerId, kind:'mp'};
+  document.getElementById('MMP').style.zIndex='250';
+  document.getElementById('mp2-nombre').value=query||'';
+  document.getElementById('mp2-tipo').value=tipo;
+}
+
 // Receta del granel (materias primas → granel)
 function abrirRecetaGranel(granelId, granelNombre){
   editRecetaGranelId=granelId;
   document.getElementById('MRGL-sub').textContent=granelNombre;
-  const sel=document.getElementById('recgl-mp');
-  sel.innerHTML=materias.map(m=>`<option value="${m.id}">${m.nombre} (${m.unidad||'UND'})</option>`).join('');
+  initPickerRecglMp();
   document.getElementById('recgl-qty').value='';
-  // Auto-seleccionar unidad de la primera materia prima
-  sel.onchange=function(){
-    const mp=materias.find(m=>m.id===sel.value);
-    if(mp&&mp.unidad) document.getElementById('recgl-unidad').value=mp.unidad;
-  };
-  if(materias.length){const mp=materias[0];if(mp&&mp.unidad)document.getElementById('recgl-unidad').value=mp.unidad;}
   renderRecetaGranelList(granelId);
   // Mostrar costo actual
   const g=graneles.find(x=>x.id===granelId);
@@ -3509,6 +3596,7 @@ async function addRecetaGranelItem(){
     renderRecetaGranelList(editRecetaGranelId);
     await recalcularCostoGranel(editRecetaGranelId);
     document.getElementById('recgl-qty').value='';
+    initPickerRecglMp();
     toast('✓ Ingrediente agregado','ok');
   }catch(e){toast('Error: '+e.message,'err');}
 }
@@ -3545,10 +3633,8 @@ function abrirReceta(prodId, prodNombre){
   // Override para usar el modal con 2 niveles
   editRecetaPGId=prodId;
   document.getElementById('MRPG-sub').textContent=prodNombre;
-  const selGL=document.getElementById('recpg-gl');
-  selGL.innerHTML=graneles.map(g=>`<option value="${g.id}">${g.nombre} (${g.unidad||'LT'})</option>`).join('');
-  const selMP=document.getElementById('recpg-mp');
-  selMP.innerHTML=materias.map(m=>`<option value="${m.id}">${m.nombre} (${m.unidad||'UND'})</option>`).join('');
+  initPickerRecpgGl();
+  initPickerRecpgMp();
   document.getElementById('recpg-glqty').value='';
   document.getElementById('recpg-mpqty').value='';
   renderRecetaProdGranelList(prodId);
@@ -3603,8 +3689,8 @@ async function addRecetaProdGranel(tipo){
     await sbIns('recetas',rec);
     recetas.push(rec);
     renderRecetaProdGranelList(editRecetaPGId);
-    if(tipo==='granel') document.getElementById('recpg-glqty').value='';
-    else document.getElementById('recpg-mpqty').value='';
+    if(tipo==='granel'){document.getElementById('recpg-glqty').value='';initPickerRecpgGl();}
+    else{document.getElementById('recpg-mpqty').value='';initPickerRecpgMp();}
     toast('✓ Agregado','ok');
   }catch(e){toast('Error: '+e.message,'err');}
 }
