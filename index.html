@@ -3068,7 +3068,8 @@ function renderMovimientos(){
   el.innerHTML=movimientos.slice(0,50).map(m=>{
     const prod=m.producto_id?prods.find(p=>p.id===m.producto_id):null;
     const mp=m.materia_prima_id?materias.find(x=>x.id===m.materia_prima_id):null;
-    const nombre=prod?prod.nombre:mp?mp.nombre:'?';
+    const gl=(!mp&&m.materia_prima_id)?graneles.find(x=>x.id===m.materia_prima_id):null;
+    const nombre=prod?prod.nombre:mp?mp.nombre:gl?gl.nombre:'?';
     const tipo=m.tipo||'ENTRADA';
     return`<div class="mov-card">
       <span class="mov-tipo ${tipo}">${tipo}</span>
