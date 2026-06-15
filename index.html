@@ -1287,6 +1287,9 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="fg"><label>Forma de pago</label>
       <select class="msel" id="e-pago"><option value="">-- Seleccionar --</option><option>EFECTIVO</option><option>YAPE/PLIN</option><option>TRANSFERENCIA</option><option>CREDITO</option></select>
     </div>
+    <div class="fg"><label>Fecha estimada de pago</label>
+      <input type="date" id="e-festimada" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
+    </div>
     <div class="fg"><label>Fecha pago total (comisiones)</label>
       <input type="date" id="e-fpt" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
     </div>
@@ -1915,6 +1918,7 @@ async function abrirE(vid){
   document.getElementById('e-est').value=v.estado||'ENVIADO';
   document.getElementById('e-pago').value=v.forma_pago||'';
   document.getElementById('e-obs').value=v.observaciones||'';
+  document.getElementById('e-festimada').value=v.fecha_estimada_pago||'';
   document.getElementById('e-fpt').value=v.fecha_pago_real||'';
   document.getElementById('e-fentrega').value=v.fecha_entrega||'';
   document.getElementById('e-abm').value='';
@@ -2010,6 +2014,7 @@ async function saveEdit(){
     };
     const fpt=document.getElementById('e-fpt').value;
     if(fpt) upd.fecha_pago_real=fpt;
+    upd.fecha_estimada_pago=document.getElementById('e-festimada').value||null;
     const fent=document.getElementById('e-fentrega').value;
     if(fent) upd.fecha_entrega=fent;
     const estadoAnterior=ventas.find(function(v){return v.id===editId;})?.estado||'';
