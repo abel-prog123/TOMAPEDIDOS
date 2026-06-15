@@ -607,11 +607,13 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="tab active" onclick="dashTab('resumen')" id="dtab-resumen" style="white-space:nowrap;">Resumen</div>
     <div class="tab" onclick="dashTab('despachos')" id="dtab-despachos" style="white-space:nowrap;">Despachos</div>
     <div class="tab" onclick="dashTab('comisiones')" id="dtab-comisiones" style="white-space:nowrap;">Comisiones</div>
+    <div class="tab" onclick="dashTab('utilidad')" id="dtab-utilidad" style="white-space:nowrap;">💰 Utilidad</div>
   </div>
   <div class="scroll">
     <div id="dash-resumen"></div>
     <div id="dash-despachos" style="display:none"></div>
     <div id="dash-comisiones" style="display:none"></div>
+    <div id="dash-utilidad" style="display:none"></div>
   </div>
 </div>
 
@@ -1190,6 +1192,27 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="fg"><label>Fecha</label><input type="date" id="mov-fecha" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;"></div>
     <div class="fg"><label>Nota (opcional)</label><input type="text" id="mov-nota" class="minp" style="width:100%" placeholder="Ej: Compra proveedor X"></div>
     <button class="mconf green" onclick="saveMov()" id="btnMOV">✓ REGISTRAR</button>
+    <div style="height:8px"></div>
+  </div>
+</div>
+
+<!-- MODAL GASTO -->
+<div class="mo" id="MGASTO" onclick="if(event.target===this)this.classList.remove('open')" style="z-index:200;">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit">💸 Registrar gasto</div>
+    <div class="fg"><label>Fecha</label>
+      <input type="date" id="gasto-fecha" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;"></div>
+    <div class="fg"><label>Categoría</label>
+      <select id="gasto-cat" class="msel">
+        <option>Alquiler</option><option>Sueldos / Planilla</option><option>Servicios (luz/agua/internet)</option>
+        <option>Transporte / Flete</option><option>Marketing</option><option>Mantenimiento</option>
+        <option>Impuestos</option><option>Otros</option>
+      </select>
+    </div>
+    <div class="fg"><label>Descripción (opcional)</label><input type="text" id="gasto-desc" class="minp" style="width:100%" placeholder="Ej: Pago alquiler local marzo"></div>
+    <div class="fg"><label>Monto (S/)</label><input type="number" id="gasto-monto" step="0.01" min="0" class="minp" style="width:100%" placeholder="0.00"></div>
+    <button class="mconf green" onclick="saveGasto()" id="btnGASTO">💾 Guardar gasto</button>
     <div style="height:8px"></div>
   </div>
 </div>
@@ -2411,7 +2434,7 @@ function getLocation(){
 
 // ── DASHBOARD TABS ────────────────────────────────────────
 function dashTab(t){
-  const ids=['resumen','despachos','comisiones'];
+  const ids=['resumen','despachos','comisiones','utilidad'];
   ids.forEach(x=>{
     const el=document.getElementById('dash-'+x);
     const tab=document.getElementById('dtab-'+x);
@@ -2421,6 +2444,150 @@ function dashTab(t){
   if(t==='despachos') renderDespachos();
   if(t==='resumen') renderDash();
   if(t==='comisiones') renderComisiones();
+  if(t==='utilidad') renderUtilidad();
+}
+
+
+// ════════════════════════════════════════════════════════════
+//  UTILIDAD (ESTADO DE RESULTADOS) + GASTOS
+// ════════════════════════════════════════════════════════════
+var gastos=[];
+var GASTO_CATS=['Alquiler','Sueldos / Planilla','Servicios (luz/agua/internet)','Transporte / Flete','Marketing','Mantenimiento','Impuestos','Otros'];
+
+function utilCambiarMes(delta){
+  dashMes+=delta;
+  if(dashMes<1){dashMes=12;dashAnio--;}
+  if(dashMes>12){dashMes=1;dashAnio++;}
+  renderUtilidad();
+}
+function utilIrHoy(){ var n=new Date(); dashMes=n.getMonth()+1; dashAnio=n.getFullYear(); renderUtilidad(); }
+function _enMesUtil(fechaStr){
+  var f=(fechaStr||'').slice(0,10), p=f.split('-');
+  return p.length>=2 && parseInt(p[1],10)===dashMes && parseInt(p[0],10)===dashAnio;
+}
+
+async function renderUtilidad(){
+  var el=document.getElementById('dash-utilidad');
+  el.innerHTML='<div class="empty"><p>Calculando...</p></div>';
+  try{
+    var dets=[]; try{ dets=await sbGet('detalle_ventas'); }catch(e){}
+    try{ gastos=await sbGet('gastos','?order=fecha.desc')||[]; }
+    catch(e){ el.innerHTML='<div class="empty"><p>Para usar Utilidad, crea la tabla <b>gastos</b> en Supabase (te pasé el SQL).</p></div>'; return; }
+
+    var mesesNom=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    var now=new Date();
+    var esMesActual=(dashMes===now.getMonth()+1&&dashAnio===now.getFullYear());
+    var labelMes=mesesNom[dashMes-1]+' '+dashAnio;
+
+    var vMes=ventas.filter(function(v){ return (v.estado!=='ANULADO') && _enMesUtil(v.fecha||v.created_at); });
+    var idsMes={}; vMes.forEach(function(v){idsMes[v.id]=true;});
+    var ingresoBruto=vMes.reduce(function(a,v){return a+parseFloat(v.total||0);},0);
+    var ingresoNeto=ingresoBruto/1.18;
+    var cogs=0, comis=0;
+    dets.forEach(function(d){
+      if(!idsMes[d.venta_id]) return;
+      var pr=prods.find(function(p){return p.id===d.producto_id;});
+      var costo=pr?parseFloat(pr.costo||0):0;
+      var qty=parseFloat(d.cantidad||0);
+      cogs+=costo*qty;
+      var v=vMes.find(function(x){return x.id===d.venta_id;});
+      comis+=calcComision(v?v.vendedor:'',parseFloat(d.precio_final||0),costo,qty);
+    });
+    var utilBruta=ingresoNeto-cogs;
+    var gMes=gastos.filter(function(g){return _enMesUtil(g.fecha);});
+    var gastoTot=gMes.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+    var gastoPorCat={};
+    gMes.forEach(function(g){ var c=g.categoria||'Otros'; gastoPorCat[c]=(gastoPorCat[c]||0)+parseFloat(g.monto||0); });
+    var utilNeta=utilBruta-comis-gastoTot;
+    var margen=ingresoNeto>0?(utilNeta/ingresoNeto*100):0;
+    var cobradoMes=abonos.filter(function(a){return _enMesUtil(a.fecha);}).reduce(function(s,a){return s+parseFloat(a.monto||0);},0);
+
+    var colUtil=utilNeta>=0?'var(--a)':'var(--d)';
+    function fila(lbl,val,sign,bold,col){
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:'+(bold?'8px':'5px')+' 0;'+(bold?'border-top:1.5px solid var(--bdr);margin-top:4px;':'')+'">'
+        +'<span style="font-size:'+(bold?'.92rem':'.82rem')+';font-weight:'+(bold?'900':'600')+';color:'+(col||'var(--txt)')+';">'+lbl+'</span>'
+        +'<span style="font-size:'+(bold?'.95rem':'.85rem')+';font-weight:'+(bold?'900':'700')+';color:'+(col||'var(--txt)')+';">'+(sign||'')+'S/ '+Math.abs(val).toFixed(2)+'</span></div>';
+    }
+
+    var h='';
+    // Nav mes
+    h+='<div style="display:flex;align-items:center;gap:8px;padding:4px 0 14px;">'
+      +'<button onclick="utilCambiarMes(-1)" style="width:42px;height:42px;border-radius:12px;border:1.5px solid var(--bdr);background:#fff;color:var(--p);font-size:1.5rem;font-weight:900;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;line-height:1;">‹</button>'
+      +'<div onclick="utilIrHoy()" style="flex:1;text-align:center;cursor:pointer;user-select:none;"><div style="font-size:1rem;font-weight:900;color:var(--txt);">💰 '+labelMes.toUpperCase()+'</div>'
+      +'<div style="font-size:.66rem;font-weight:800;color:'+(esMesActual?'var(--mu)':'var(--p)')+';margin-top:1px;text-transform:uppercase;letter-spacing:.3px;">'+(esMesActual?'Mes actual':'↺ Volver a hoy')+'</div></div>'
+      +'<button onclick="utilCambiarMes(1)" '+(esMesActual?'disabled':'')+' style="width:42px;height:42px;border-radius:12px;border:1.5px solid var(--bdr);background:#fff;color:var(--p);font-size:1.5rem;font-weight:900;cursor:'+(esMesActual?'default':'pointer')+';opacity:'+(esMesActual?'.3':'1')+';flex-shrink:0;display:flex;align-items:center;justify-content:center;line-height:1;">›</button></div>';
+
+    // Estado de resultados
+    h+='<div style="background:#fff;border:1.5px solid var(--bdr);border-radius:14px;padding:14px 16px;margin-bottom:12px;">';
+    h+=fila('Ingresos (neto de IGV)',ingresoNeto,'',false,'var(--txt)');
+    h+=fila('Costo de ventas',cogs,'− ',false,'var(--mu)');
+    h+=fila('Utilidad bruta',utilBruta,'',true,'var(--txt)');
+    h+=fila('Comisiones',comis,'− ',false,'var(--mu)');
+    h+=fila('Gastos operativos',gastoTot,'− ',false,'var(--mu)');
+    h+=fila('UTILIDAD NETA',utilNeta,utilNeta<0?'− ':'',true,colUtil);
+    h+='<div style="text-align:right;font-size:.72rem;color:var(--mu);margin-top:2px;">Margen neto: '+margen.toFixed(1)+'%</div>';
+    h+='</div>';
+
+    // Contexto caja
+    h+='<div style="display:flex;gap:8px;margin-bottom:12px;">'
+      +'<div style="flex:1;background:var(--bg);border-radius:12px;padding:10px;text-align:center;"><div style="font-size:1rem;font-weight:900;color:var(--a);">S/ '+cobradoMes.toFixed(0)+'</div><div style="font-size:.66rem;color:var(--mu);">cobrado en el mes</div></div>'
+      +'<div style="flex:1;background:var(--bg);border-radius:12px;padding:10px;text-align:center;"><div style="font-size:1rem;font-weight:900;">S/ '+ingresoBruto.toFixed(0)+'</div><div style="font-size:.66rem;color:var(--mu);">ventas (con IGV)</div></div></div>';
+
+    // Gastos
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;margin:6px 2px 8px;">'
+      +'<span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Gastos del mes</span>'
+      +'<button onclick="abrirGasto()" style="padding:6px 12px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">+ Registrar gasto</button></div>';
+    var cats=Object.keys(gastoPorCat);
+    if(cats.length){
+      h+='<div style="background:#fff;border:1.5px solid var(--bdr);border-radius:12px;padding:8px 12px;margin-bottom:10px;">';
+      cats.sort(function(a,b){return gastoPorCat[b]-gastoPorCat[a];}).forEach(function(c){
+        h+='<div style="display:flex;justify-content:space-between;font-size:.8rem;padding:4px 0;"><span>'+c+'</span><span style="font-weight:700;">S/ '+gastoPorCat[c].toFixed(2)+'</span></div>';
+      });
+      h+='</div>';
+    }
+    if(gMes.length){
+      h+=gMes.map(function(g){
+        return '<div class="stock-card" style="padding:10px 12px;"><div class="stock-info"><div class="stock-nombre" style="font-size:.82rem;">'+(g.descripcion||g.categoria)+'</div><div class="stock-unidad">'+g.categoria+' · '+g.fecha+'</div></div>'
+          +'<div style="display:flex;align-items:center;gap:8px;"><span style="font-weight:800;color:var(--d);">S/ '+parseFloat(g.monto||0).toFixed(2)+'</span>'
+          +'<button onclick="deleteGasto(\''+g.id+'\')" style="background:none;border:none;color:var(--mu);font-size:1rem;cursor:pointer;">🗑</button></div></div>';
+      }).join('');
+    } else {
+      h+='<div style="color:var(--mu);font-size:.8rem;text-align:center;padding:6px;">Sin gastos registrados este mes</div>';
+    }
+    h+='<div style="height:16px"></div>';
+    el.innerHTML=h;
+  }catch(e){ el.innerHTML='<div class="empty"><p>Error: '+e.message+'</p></div>'; }
+}
+
+function abrirGasto(){
+  document.getElementById('gasto-fecha').value=hoy();
+  document.getElementById('gasto-cat').value=GASTO_CATS[0];
+  document.getElementById('gasto-desc').value='';
+  document.getElementById('gasto-monto').value='';
+  document.getElementById('MGASTO').classList.add('open');
+}
+async function saveGasto(){
+  var monto=parseFloat(document.getElementById('gasto-monto').value);
+  if(!monto||monto<=0){toast('Ingresa un monto válido','err');return;}
+  var btn=document.getElementById('btnGASTO'); btn.disabled=true; btn.textContent='⏳ Guardando...';
+  try{
+    var g={id:gid(),fecha:document.getElementById('gasto-fecha').value||hoy(),categoria:document.getElementById('gasto-cat').value,descripcion:document.getElementById('gasto-desc').value||null,monto:monto};
+    await sbIns('gastos',g);
+    gastos.unshift(g);
+    document.getElementById('MGASTO').classList.remove('open');
+    toast('✓ Gasto registrado','ok');
+    renderUtilidad();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+  finally{ btn.disabled=false; btn.textContent='💾 Guardar gasto'; }
+}
+async function deleteGasto(id){
+  if(!confirm('¿Eliminar este gasto?')) return;
+  try{
+    await sb('gastos','DELETE',null,'?id=eq.'+id);
+    gastos=gastos.filter(function(x){return x.id!==id;});
+    toast('✓ Eliminado','ok');
+    renderUtilidad();
+  }catch(e){ toast('Error: '+e.message,'err'); }
 }
 
 // ── DESPACHOS DEL DÍA ────────────────────────────────────
