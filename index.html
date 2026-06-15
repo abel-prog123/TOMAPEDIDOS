@@ -3053,6 +3053,10 @@ function renderStockRecetas(){
         <button onclick="abrirReceta('${p.id}','${p.nombre.replace(/'/g,"\'")}')" style="padding:5px 10px;background:var(--p);color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;">✏️ Editar</button>
       </div>
       ${recs.length?recs.map(r=>{
+        if(r.granel_id){
+          const g=graneles.find(x=>x.id===r.granel_id);
+          return`<div style="font-size:.75rem;color:var(--mu);margin-top:4px;">• 🧪 ${g?g.nombre:'?'}: ${r.cantidad} ${g?g.unidad||'LT':'LT'}</div>`;
+        }
         const mp=materias.find(m=>m.id===r.materia_prima_id);
         return`<div style="font-size:.75rem;color:var(--mu);margin-top:4px;">• ${mp?mp.nombre:'?'}: ${r.cantidad} ${mp?mp.unidad||'':'UND'}</div>`;
       }).join(''):`<div style="font-size:.75rem;color:var(--mu);margin-top:4px;font-style:italic;">Sin receta definida</div>`}
