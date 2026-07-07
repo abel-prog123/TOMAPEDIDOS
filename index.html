@@ -3667,11 +3667,80 @@ function renderStockMaterias(){
 }
 
 // Recetas
+
+// ════════════════════════════════════════════════════════════
+//  EXPORTAR FÓRMULAS (RECETAS) A EXCEL
+// ════════════════════════════════════════════════════════════
+function _ensureXLSX(cb){
+  if(window.XLSX) return cb();
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  s.onload=function(){ cb(); };
+  s.onerror=function(){ toast('No se pudo cargar el exportador. Revisa tu conexión a internet.','err'); };
+  document.head.appendChild(s);
+}
+function _r4(x){ return Math.round((parseFloat(x)||0)*10000)/10000; }
+
+function exportarFormulas(){
+  toast('Generando Excel...','ok');
+  _ensureXLSX(function(){
+    try{
+      // ── Hoja 1: Recetas de Granel ──
+      var h1=[['Granel','Unidad','Insumo','Cantidad','Unidad insumo','Costo unit. (S/)','Costo línea (S/)']];
+      graneles.slice().sort(function(a,b){return (a.nombre||'').localeCompare(b.nombre||'');}).forEach(function(g){
+        var recs=recetasGranel.filter(function(r){return r.granel_id===g.id;});
+        if(!recs.length){ h1.push([g.nombre,g.unidad||'LT','(sin receta)','','','','']); h1.push([]); return; }
+        var sub=0;
+        recs.forEach(function(r){
+          var m=materias.find(function(x){return x.id===r.materia_prima_id;});
+          var cu=m?parseFloat(m.costo_unitario||0):0, cant=parseFloat(r.cantidad||0), cl=cu*cant; sub+=cl;
+          h1.push([g.nombre, g.unidad||'LT', m?m.nombre:'(no encontrado)', cant, m?(m.unidad||''):'', _r4(cu), _r4(cl)]);
+        });
+        h1.push(['','','► COSTO POR UNIDAD','','','', _r4(g.costo_unitario||sub)]);
+        h1.push([]);
+      });
+
+      // ── Hoja 2: Recetas de Producto ──
+      var h2=[['Producto','Unidad','Componente','Tipo','Cantidad','Unidad','Costo unit. (S/)','Costo línea (S/)']];
+      prods.slice().sort(function(a,b){return (a.nombre||'').localeCompare(b.nombre||'');}).forEach(function(p){
+        var recs=recetas.filter(function(r){return r.producto_id===p.id;});
+        if(!recs.length) return;
+        var sub=0;
+        recs.forEach(function(r){
+          var nombre,tipo,unidad,cu;
+          if(r.granel_id){
+            var g=graneles.find(function(x){return x.id===r.granel_id;});
+            nombre=g?g.nombre:'(no encontrado)'; tipo='Granel'; unidad=g?(g.unidad||'LT'):''; cu=g?parseFloat(g.costo_unitario||0):0;
+          } else {
+            var m=materias.find(function(x){return x.id===r.materia_prima_id;});
+            nombre=m?m.nombre:'(no encontrado)'; tipo=m?(m.tipo||'Insumo'):'Insumo'; unidad=m?(m.unidad||''):''; cu=m?parseFloat(m.costo_unitario||0):0;
+          }
+          var cant=parseFloat(r.cantidad||0), cl=cu*cant; sub+=cl;
+          h2.push([p.nombre, p.unidad||'UND', nombre, tipo, cant, unidad, _r4(cu), _r4(cl)]);
+        });
+        h2.push(['','','► COSTO MATERIAL TOTAL','','','', '', _r4(sub)]);
+        h2.push([]);
+      });
+
+      var wb=XLSX.utils.book_new();
+      var ws1=XLSX.utils.aoa_to_sheet(h1);
+      ws1['!cols']=[{wch:26},{wch:8},{wch:30},{wch:10},{wch:12},{wch:14},{wch:14}];
+      var ws2=XLSX.utils.aoa_to_sheet(h2);
+      ws2['!cols']=[{wch:28},{wch:8},{wch:30},{wch:9},{wch:10},{wch:9},{wch:14},{wch:14}];
+      XLSX.utils.book_append_sheet(wb, ws1, 'Recetas Granel');
+      XLSX.utils.book_append_sheet(wb, ws2, 'Recetas Producto');
+      XLSX.writeFile(wb, 'Formulas_'+hoy()+'.xlsx');
+      toast('✓ Excel generado','ok');
+    }catch(e){ toast('Error al exportar: '+e.message,'err'); }
+  });
+}
+
 function renderStockRecetas(){
   const el=document.getElementById('stock-recetas');
   const qrec=(document.getElementById('busq-stock-rec')||{value:''}).value.toLowerCase();
   const filtradosRec=qrec?prods.filter(p=>(p.nombre||'').toLowerCase().includes(qrec)):prods;
   var html='<div style="margin-bottom:8px;font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Recetas por producto ('+filtradosRec.length+')</div>';
+  html+='<button onclick="exportarFormulas()" style="width:100%;padding:11px;background:var(--a);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.85rem;font-weight:800;cursor:pointer;margin-bottom:10px;">⬇️ Exportar todas las fórmulas a Excel</button>';
   html+='<input type="text" id="busq-stock-rec" placeholder="🔍 Buscar producto..." oninput="busqStock(\'busq-stock-rec\',renderStockRecetas)" style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">';
   if(!filtradosRec.length){el.innerHTML=html+'<div class="empty"><p>Sin resultados</p></div>';return;}
   html+=filtradosRec.map(p=>{
