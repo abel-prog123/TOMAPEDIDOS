@@ -3656,6 +3656,7 @@ function renderStockMaterias(){
   </div>
   <input type="text" id="busq-stock-mp" placeholder="🔍 Buscar materia prima o SKU..." oninput="busqStock('busq-stock-mp',renderStockMaterias)"
     style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">`;
+  html+='<button onclick="exportarMaterias()" style="width:100%;padding:11px;background:var(--a);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.85rem;font-weight:800;cursor:pointer;margin-bottom:10px;">⬇️ Exportar insumos y envases a Excel</button>';
   if(!filtradosMP.length){el.innerHTML=html+'<div class="empty"><p>Sin resultados</p></div>';return;}
   const secHdr=(txt,n)=>`<div style="display:flex;align-items:center;gap:6px;margin:6px 0 8px;"><span style="font-size:.8rem;font-weight:900;color:var(--txt);">${txt}</span><span style="font-size:.68rem;font-weight:800;color:#fff;background:var(--p);border-radius:10px;padding:1px 8px;">${n}</span></div>`;
   html+=secHdr('🧪 Insumos',insumos.length);
@@ -3669,7 +3670,7 @@ function renderStockMaterias(){
 // Recetas
 
 // ════════════════════════════════════════════════════════════
-//  EXPORTAR FÓRMULAS (RECETAS) A EXCEL
+//  EXPORTAR A EXCEL — RECETAS + MATERIAS PRIMAS (con códigos)
 // ════════════════════════════════════════════════════════════
 function _ensureXLSX(cb){
   if(window.XLSX) return cb();
@@ -3680,56 +3681,83 @@ function _ensureXLSX(cb){
   document.head.appendChild(s);
 }
 function _r4(x){ return Math.round((parseFloat(x)||0)*10000)/10000; }
+function _cod(o){ return o ? (o.codigo || o.id || '') : ''; }
 
 function exportarFormulas(){
   toast('Generando Excel...','ok');
   _ensureXLSX(function(){
     try{
       // ── Hoja 1: Recetas de Granel ──
-      var h1=[['Granel','Unidad','Insumo','Cantidad','Unidad insumo','Costo unit. (S/)','Costo línea (S/)']];
+      var h1=[['Granel','Unidad','Cód. insumo','Insumo','Cantidad','Unidad insumo','Costo unit. (S/)','Costo línea (S/)']];
       graneles.slice().sort(function(a,b){return (a.nombre||'').localeCompare(b.nombre||'');}).forEach(function(g){
         var recs=recetasGranel.filter(function(r){return r.granel_id===g.id;});
-        if(!recs.length){ h1.push([g.nombre,g.unidad||'LT','(sin receta)','','','','']); h1.push([]); return; }
+        if(!recs.length){ h1.push([g.nombre,g.unidad||'LT','','(sin receta)','','','','']); h1.push([]); return; }
         var sub=0;
         recs.forEach(function(r){
           var m=materias.find(function(x){return x.id===r.materia_prima_id;});
           var cu=m?parseFloat(m.costo_unitario||0):0, cant=parseFloat(r.cantidad||0), cl=cu*cant; sub+=cl;
-          h1.push([g.nombre, g.unidad||'LT', m?m.nombre:'(no encontrado)', cant, m?(m.unidad||''):'', _r4(cu), _r4(cl)]);
+          h1.push([g.nombre, g.unidad||'LT', m?(m.codigo||''):'', m?m.nombre:'(no encontrado)', cant, m?(m.unidad||''):'', _r4(cu), _r4(cl)]);
         });
-        h1.push(['','','► COSTO POR UNIDAD','','','', _r4(g.costo_unitario||sub)]);
+        h1.push(['','','','► COSTO POR UNIDAD','','','', _r4(g.costo_unitario||sub)]);
         h1.push([]);
       });
 
       // ── Hoja 2: Recetas de Producto ──
-      var h2=[['Producto','Unidad','Componente','Tipo','Cantidad','Unidad','Costo unit. (S/)','Costo línea (S/)']];
+      var h2=[['Cód. producto','Producto','Unidad','Cód. componente','Componente','Tipo','Cantidad','Unidad','Costo unit. (S/)','Costo línea (S/)']];
       prods.slice().sort(function(a,b){return (a.nombre||'').localeCompare(b.nombre||'');}).forEach(function(p){
         var recs=recetas.filter(function(r){return r.producto_id===p.id;});
         if(!recs.length) return;
         var sub=0;
         recs.forEach(function(r){
-          var nombre,tipo,unidad,cu;
+          var codc,nombre,tipo,unidad,cu;
           if(r.granel_id){
             var g=graneles.find(function(x){return x.id===r.granel_id;});
-            nombre=g?g.nombre:'(no encontrado)'; tipo='Granel'; unidad=g?(g.unidad||'LT'):''; cu=g?parseFloat(g.costo_unitario||0):0;
+            codc=g?(g.codigo||''):''; nombre=g?g.nombre:'(no encontrado)'; tipo='Granel'; unidad=g?(g.unidad||'LT'):''; cu=g?parseFloat(g.costo_unitario||0):0;
           } else {
             var m=materias.find(function(x){return x.id===r.materia_prima_id;});
-            nombre=m?m.nombre:'(no encontrado)'; tipo=m?(m.tipo||'Insumo'):'Insumo'; unidad=m?(m.unidad||''):''; cu=m?parseFloat(m.costo_unitario||0):0;
+            codc=m?(m.codigo||''):''; nombre=m?m.nombre:'(no encontrado)'; tipo=m?(m.tipo||'Insumo'):'Insumo'; unidad=m?(m.unidad||''):''; cu=m?parseFloat(m.costo_unitario||0):0;
           }
           var cant=parseFloat(r.cantidad||0), cl=cu*cant; sub+=cl;
-          h2.push([p.nombre, p.unidad||'UND', nombre, tipo, cant, unidad, _r4(cu), _r4(cl)]);
+          h2.push([_cod(p), p.nombre, p.unidad||'UND', codc, nombre, tipo, cant, unidad, _r4(cu), _r4(cl)]);
         });
-        h2.push(['','','► COSTO MATERIAL TOTAL','','','', '', _r4(sub)]);
+        h2.push(['','','','','► COSTO MATERIAL TOTAL','','','', '', _r4(sub)]);
         h2.push([]);
       });
 
       var wb=XLSX.utils.book_new();
       var ws1=XLSX.utils.aoa_to_sheet(h1);
-      ws1['!cols']=[{wch:26},{wch:8},{wch:30},{wch:10},{wch:12},{wch:14},{wch:14}];
+      ws1['!cols']=[{wch:26},{wch:8},{wch:12},{wch:30},{wch:10},{wch:12},{wch:14},{wch:14}];
       var ws2=XLSX.utils.aoa_to_sheet(h2);
-      ws2['!cols']=[{wch:28},{wch:8},{wch:30},{wch:9},{wch:10},{wch:9},{wch:14},{wch:14}];
+      ws2['!cols']=[{wch:14},{wch:28},{wch:8},{wch:14},{wch:30},{wch:9},{wch:10},{wch:9},{wch:14},{wch:14}];
       XLSX.utils.book_append_sheet(wb, ws1, 'Recetas Granel');
       XLSX.utils.book_append_sheet(wb, ws2, 'Recetas Producto');
       XLSX.writeFile(wb, 'Formulas_'+hoy()+'.xlsx');
+      toast('✓ Excel generado','ok');
+    }catch(e){ toast('Error al exportar: '+e.message,'err'); }
+  });
+}
+
+function exportarMaterias(){
+  toast('Generando Excel...','ok');
+  _ensureXLSX(function(){
+    try{
+      function provName(id){ var p=proveedores.find(function(x){return x.id===id;}); return p?(p.nombre||''):''; }
+      function rowsFor(esEnvase){
+        var arr=materias.filter(function(m){ return ((m.tipo||'Insumo')==='Envase')===esEnvase; });
+        arr.sort(function(a,b){ return (a.codigo||a.nombre||'').localeCompare(b.codigo||b.nombre||''); });
+        var out=[['Código','Nombre','Unidad','Costo unit. (S/)','Stock actual','Stock mínimo','Proveedor']];
+        arr.forEach(function(m){
+          out.push([m.codigo||'', m.nombre||'', m.unidad||'', _r4(m.costo_unitario||0), parseFloat(m.stock_actual||0), parseFloat(m.stock_minimo||0), provName(m.proveedor_id)]);
+        });
+        return out;
+      }
+      var wb=XLSX.utils.book_new();
+      var cols=[{wch:14},{wch:36},{wch:8},{wch:15},{wch:12},{wch:12},{wch:26}];
+      var wsI=XLSX.utils.aoa_to_sheet(rowsFor(false)); wsI['!cols']=cols;
+      var wsE=XLSX.utils.aoa_to_sheet(rowsFor(true));  wsE['!cols']=cols;
+      XLSX.utils.book_append_sheet(wb, wsI, 'Insumos');
+      XLSX.utils.book_append_sheet(wb, wsE, 'Envases');
+      XLSX.writeFile(wb, 'MateriasPrimas_'+hoy()+'.xlsx');
       toast('✓ Excel generado','ok');
     }catch(e){ toast('Error al exportar: '+e.message,'err'); }
   });
