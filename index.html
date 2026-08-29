@@ -485,7 +485,16 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
   <div class="scroll" id="pane-tot" style="display:none">
     <div class="fs">
       <div class="ft">Datos del pedido</div>
-      <div class="fg"><label>Cliente</label><select id="sel-c"><option value="">-- Seleccionar --</option></select></div>
+      <div class="fg"><label>Cliente</label>
+        <div style="position:relative">
+          <input type="text" id="cbc-in" autocomplete="off" placeholder="🔍 Escribe para buscar cliente..."
+            oninput="cbcFiltrar()" onfocus="cbcFiltrar()"
+            style="width:100%;padding:12px 34px 12px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.92rem;outline:none;box-sizing:border-box;background:var(--card);color:var(--txt);">
+          <span id="cbc-x" onclick="cbcLimpiar()" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:1.1rem;color:var(--mu);">✕</span>
+          <div id="cbc-list" style="display:none;position:absolute;z-index:80;left:0;right:0;top:calc(100% + 4px);background:var(--card);border:1.5px solid var(--bdr);border-radius:12px;max-height:270px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.14);"></div>
+          <select id="sel-c" style="display:none"><option value="">-- Seleccionar --</option></select>
+        </div>
+      </div>
       <div class="fg"><label>Forma de pago</label>
         <select id="sel-p"><option value="">-- Seleccionar --</option>
           <option>EFECTIVO</option><option>YAPE/PLIN</option><option>TRANSFERENCIA</option><option>CREDITO</option>
@@ -1464,7 +1473,15 @@ async function refresh(){
   }catch(e){toast('Error: '+e.message,'err');}
 }
 
-function hoy(){return new Date().toISOString().split('T')[0];}
+function hoy(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+// Parsea 'YYYY-MM-DD' como fecha LOCAL (new Date('2026-08-28') la lee como UTC y en Perú retrocede un día)
+function pF(s){
+  if(!s) return new Date(NaN);
+  if(s instanceof Date) return s;
+  var m=String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(m) return new Date(parseInt(m[1],10),parseInt(m[2],10)-1,parseInt(m[3],10));
+  return new Date(s);
+}
 function gid(){return Date.now().toString(36)+Math.random().toString(36).substring(2,5);}
 function getEmoji(c){return{GALON:'🛢️',LITRO:'🧴',BIDON:'🪣',BALDE:'🪣',CILINDRO:'⚙️',CAJA:'📦'}[c]||'📦';}
 
@@ -1673,8 +1690,91 @@ function popCSel(){
   const sel=document.getElementById('sel-c');
   const cur=sel.value;
   sel.innerHTML='<option value="">-- Seleccionar --</option>'+clis.map(c=>`<option value="${c.id}">${c.nombres||c.alias||c.id}</option>`).join('');
-  if(cur) sel.value=cur;
+  if(cur){ sel.value=cur; cbcSync(); }
 }
+
+// ── BUSCADOR DE CLIENTE (combobox con filtrado en vivo) ───
+function _cbcNom(c){ return c.nombres||c.alias||c.id||''; }
+function cbcSync(){
+  var sel=document.getElementById('sel-c'), inp=document.getElementById('cbc-in');
+  if(!sel||!inp) return;
+  var c=clis.find(function(x){return x.id===sel.value;});
+  inp.value=c?_cbcNom(c):'';
+  document.getElementById('cbc-x').style.display=inp.value?'block':'none';
+}
+function cbcLimpiar(){
+  var sel=document.getElementById('sel-c');
+  if(sel) sel.value='';
+  var inp=document.getElementById('cbc-in');
+  if(inp){ inp.value=''; inp.focus(); }
+  document.getElementById('cbc-x').style.display='none';
+  cbcFiltrar();
+}
+function cbcCerrar(){
+  var l=document.getElementById('cbc-list');
+  if(l) l.style.display='none';
+}
+function cbcFiltrar(){
+  var inp=document.getElementById('cbc-in'), list=document.getElementById('cbc-list');
+  if(!inp||!list) return;
+  var q=(inp.value||'').toLowerCase().trim();
+  document.getElementById('cbc-x').style.display=inp.value?'block':'none';
+  var arr=clis.slice();
+  if(q){
+    var toks=q.split(/\s+/).filter(Boolean);
+    arr=arr.filter(function(c){
+      var t=((c.nombres||'')+' '+(c.alias||'')+' '+(c.dni_ruc||'')+' '+(c.telefono||'')+' '+(c.id||'')).toLowerCase();
+      return toks.every(function(tk){ return t.indexOf(tk)>=0; });
+    });
+  }
+  arr.sort(function(a,b){ return _cbcNom(a).localeCompare(_cbcNom(b)); });
+  var total=arr.length, top=arr.slice(0,60);
+  var selId=document.getElementById('sel-c').value;
+  var html='<div onclick="cbcNuevo()" style="padding:11px 14px;border-bottom:1.5px solid var(--bdr);cursor:pointer;font-weight:800;color:var(--a);font-size:.9rem;">➕ Crear nuevo cliente</div>';
+  if(!top.length){
+    html+='<div style="padding:14px;color:var(--mu);font-size:.88rem;text-align:center;">Sin coincidencias</div>';
+  } else {
+    html+=top.map(function(c){
+      var act=c.id===selId;
+      var sub=[c.alias&&c.alias!==c.nombres?c.alias:'', c.dni_ruc||'', c.telefono||''].filter(Boolean).join(' · ');
+      return '<div onclick="cbcElegir(\''+String(c.id).replace(/'/g,"\\'")+'\')" style="padding:10px 14px;border-bottom:1px solid var(--bdr);cursor:pointer;'+(act?'background:rgba(14,165,233,.10);':'')+'">'
+        +'<div style="font-size:.9rem;font-weight:'+(act?'800':'600')+';color:var(--txt);">'+_cbcNom(c)+'</div>'
+        +(sub?'<div style="font-size:.74rem;color:var(--mu);margin-top:2px;">'+sub+'</div>':'')
+        +'</div>';
+    }).join('');
+    if(total>top.length) html+='<div style="padding:9px 14px;color:var(--mu);font-size:.76rem;text-align:center;">Mostrando 60 de '+total+' · escribe para afinar</div>';
+  }
+  list.innerHTML=html;
+  list.style.display='block';
+}
+function cbcElegir(id){
+  var sel=document.getElementById('sel-c');
+  sel.value=id;
+  cbcSync();
+  cbcCerrar();
+}
+function cbcNuevo(){
+  cbcCerrar();
+  if(typeof abrirNuevoCliente==='function'){ abrirNuevoCliente(); return; }
+  editCliId=null; newCliPhoto=null;
+  ['ec-nombre','ec-alias','ec-ruc','ec-tel','ec-email','ec-dir','ec-ubicacion'].forEach(function(id){
+    var e=document.getElementById(id); if(e) e.value='';
+  });
+  var nom=(document.getElementById('cbc-in').value||'').trim();
+  if(nom) document.getElementById('ec-nombre').value=nom;
+  var prev=document.getElementById('cli-foto-prev'), icon=document.getElementById('cli-foto-icon');
+  if(prev) prev.style.display='none';
+  if(icon) icon.style.display='block';
+  document.getElementById('MEC-tit').textContent='➕ Nuevo Cliente';
+  document.getElementById('MEC').classList.add('open');
+}
+document.addEventListener('click',function(e){
+  var l=document.getElementById('cbc-list');
+  if(!l||l.style.display==='none') return;
+  if(e.target.closest&&e.target.closest('#cbc-list')) return;
+  if(e.target.id==='cbc-in'||e.target.id==='cbc-x') return;
+  cbcCerrar();
+});
 
 // ── GUARDAR PEDIDO ────────────────────────────────────────
 async function guardar(){
@@ -1711,7 +1811,7 @@ async function guardar(){
       comprobante:comp||null, observaciones:obs||null,
       estado:'ENVIADO', proceso:'VENTA', total:sub, descuento:desc,
       fecha_estimada_pago:fep||null, fecha_entrega:fe||null,
-      fecha:now.toISOString().split('T')[0]
+      fecha:hoy()
     });
 
     // 2. Guardar detalle
@@ -1750,7 +1850,7 @@ async function guardar(){
 
     // 4. Abono inicial
     if(ab0>0){
-      await sbIns('abonos',{id:gid(),venta_id:vid,monto:ab0,fecha:ab0f||now.toISOString().split('T')[0]});
+      await sbIns('abonos',{id:gid(),venta_id:vid,monto:ab0,fecha:ab0f||hoy()});
     }
 
     // 5. Generar PDF y guardar URL
@@ -1770,7 +1870,7 @@ async function guardar(){
       id:vid, cliente_id:cli, vendedor:vend, forma_pago:pago,
       comprobante:comp, observaciones:obs, estado:'ENVIADO',
       total:sub, descuento:desc,
-      fecha:now.toISOString().split('T')[0],
+      fecha:hoy(),
       created_at:now.toISOString()
     };
     ventas.unshift(newVenta);
@@ -1855,7 +1955,7 @@ function renderV(list){
   if(!list.length){el.innerHTML='<div class="empty"><p>No hay ventas registradas</p></div>';return;}
   const tree={};
   list.forEach(v=>{
-    const d=new Date(v.fecha||v.created_at||new Date());
+    const d=pF(v.fecha||v.created_at||new Date());
     const y=d.getFullYear(); const m=d.getMonth()+1; const day=d.getDate();
     if(!tree[y])tree[y]={};
     if(!tree[y][m])tree[y][m]={};
@@ -2061,6 +2161,7 @@ function nuevoPedido(){
   carrito=[];
   renderD(); uDC();
   ['sel-c','sel-p','sel-comp'].forEach(id=>document.getElementById(id).value='');
+  if(document.getElementById('cbc-in')){ document.getElementById('cbc-in').value=''; document.getElementById('cbc-x').style.display='none'; cbcCerrar(); }
   document.getElementById('txt-obs').value='';
   document.getElementById('inp-fep').value='';
   document.getElementById('inp-fe').value='';
@@ -2154,7 +2255,7 @@ async function renderDash(){
     const totalMes=vMes.reduce((s,v)=>s+parseFloat(v.total||0),0);
     const pendientesMes=vMes.filter(v=>parseFloat(v.total||0)>getAb(v.id));
     const montoPendiente=pendientesMes.reduce((s,v)=>s+(parseFloat(v.total||0)-getAb(v.id)),0);
-    const hoyStr=new Date().toISOString().split('T')[0];
+    const hoyStr=hoy();
     const vencidas=vMes.filter(v=>v.fecha_estimada_pago&&v.fecha_estimada_pago<hoyStr&&parseFloat(v.total||0)>getAb(v.id));
     const cliTotales={};
     vMes.forEach(v=>{if(!cliTotales[v.cliente_id])cliTotales[v.cliente_id]=0;cliTotales[v.cliente_id]+=parseFloat(v.total||0);});
@@ -2389,6 +2490,10 @@ async function saveCliente(){
       await sbIns('clientes',data);
       clis.push(data);
       clis.sort((a,b)=>(a.nombres||'').localeCompare(b.nombres||''));
+      if(document.getElementById('cbc-in')){
+        const _s=document.getElementById('sel-c');
+        if(_s && !_s.value){ _s.value=data.id; }
+      }
     }
     renderC(clis); popCSel();
     toast('✓ Cliente guardado','ok');
@@ -2601,7 +2706,7 @@ async function renderDespachos(){
   el.innerHTML='<div class="empty"><p>Cargando...</p></div>';
   try{
     // Cargar detalles de ventas para mostrar productos
-    const hoy=new Date().toISOString().split('T')[0];
+    const hoy=window.hoy();
     // Ventas activas (no anuladas, no completadas)
     const activas=ventas.filter(v=>v.estado!=='ANULADO'&&v.estado!=='COMPLETADO');
     if(!activas.length){el.innerHTML='<div class="empty"><p>No hay pedidos pendientes</p></div>';return;}
@@ -2786,7 +2891,7 @@ async function exportExcel(){
     var u1=URL.createObjectURL(b1);
     var a1=document.createElement('a');
     a1.href=u1;
-    a1.download='Frostech_Detalle_'+new Date().toISOString().split('T')[0]+'.csv';
+    a1.download='Frostech_Detalle_'+hoy()+'.csv';
     a1.click();
     URL.revokeObjectURL(u1);
 
@@ -2796,7 +2901,7 @@ async function exportExcel(){
       var u2=URL.createObjectURL(b2);
       var a2=document.createElement('a');
       a2.href=u2;
-      a2.download='Frostech_Ventas_'+new Date().toISOString().split('T')[0]+'.csv';
+      a2.download='Frostech_Ventas_'+hoy()+'.csv';
       a2.click();
       URL.revokeObjectURL(u2);
     },800);
@@ -2849,7 +2954,7 @@ async function renderComisiones(){
     const mesesDisp=[];
     ventas.filter(v=>v.estado==='COMPLETADO').forEach(v=>{
       if(!v.fecha_pago_real&&!v.fecha) return;
-      const d=new Date(v.fecha_pago_real||v.fecha);
+      const d=pF(v.fecha_pago_real||v.fecha);
       const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
       const label=MESES[d.getMonth()]+' '+d.getFullYear();
       if(!mesesDisp.find(m=>m.key===key)) mesesDisp.push({key,label});
@@ -2858,7 +2963,7 @@ async function renderComisiones(){
 
     // Filtrar según mes seleccionado
     const ventasFilt=comFiltroMes==='todos'?ventasCompletas:ventasCompletas.filter(v=>{
-      const d=new Date(v.fecha_pago_real||v.fecha||'');
+      const d=pF(v.fecha_pago_real||v.fecha||'');
       const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
       return key===comFiltroMes;
     });
@@ -2967,7 +3072,7 @@ async function exportComisiones(){
   toast('Generando Excel...','');
   try{
     const ventasCompletas=ventas.filter(v=>v.estado==='COMPLETADO'&&(comFiltroMes==='todos'||
-      (()=>{const d=new Date(v.fecha_pago_real||v.fecha||'');return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`===comFiltroMes;})()));
+      (()=>{const d=pF(v.fecha_pago_real||v.fecha||'');return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`===comFiltroMes;})()));
     const allDets=await sbGet('detalle_ventas');
 
     var rows=[['VENDEDOR','FECHA_PAGO','CLIENTE','PRODUCTO','CANTIDAD','PRECIO_VENTA','PRECIO_NETO','COSTO','MARGEN_S','COMISION_S','FORMULA']];
@@ -3009,7 +3114,7 @@ async function exportComisiones(){
     var url=URL.createObjectURL(blob);
     var a=document.createElement('a');
     a.href=url;
-    a.download='Frostech_Comisiones_'+new Date().toISOString().split('T')[0]+'.csv';
+    a.download='Frostech_Comisiones_'+hoy()+'.csv';
     a.click();
     URL.revokeObjectURL(url);
     toast('Comisiones exportadas','ok');
@@ -3021,7 +3126,7 @@ async function exportComisionesPDF(){
   toast('Generando PDF...','');
   try{
     const ventasCompletas=ventas.filter(v=>v.estado==='COMPLETADO'&&(comFiltroMes==='todos'||
-      (()=>{const d=new Date(v.fecha_pago_real||v.fecha||'');return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`===comFiltroMes;})()));
+      (()=>{const d=pF(v.fecha_pago_real||v.fecha||'');return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`===comFiltroMes;})()));
     const allDets=await sbGet('detalle_ventas');
     const{jsPDF}=window.jspdf;
     const doc=new jsPDF({unit:'mm',format:'a4'});
@@ -4900,7 +5005,7 @@ function exportValorizacion(){
     }).join(NL);
   }
 
-  var fecha=new Date().toISOString().split('T')[0];
+  var fecha=hoy();
   var rows=[['TIPO','NOMBRE','UNIDAD','STOCK_ACTUAL','STOCK_MINIMO','COSTO_UNITARIO','VALOR_TOTAL','ESTADO']];
 
   prods.forEach(function(p){
@@ -4977,7 +5082,7 @@ function renderKardex(tipo,id,unidad){
     if(tipo==='granel'||tipo==='mp') return m.materia_prima_id===id;
     return false;
   }).sort(function(a,b){
-    return new Date(a.fecha||a.created_at||0)-new Date(b.fecha||b.created_at||0);
+    return pF(a.fecha||a.created_at||0)-pF(b.fecha||b.created_at||0);
   });
 
   if(!movs.length){
@@ -5018,7 +5123,7 @@ function exportKardex(){
     if(kardexTipo==='prod') return m.producto_id===kardexTarget;
     return m.materia_prima_id===kardexTarget;
   }).sort(function(a,b){
-    return new Date(a.fecha||0)-new Date(b.fecha||0);
+    return pF(a.fecha||0)-pF(b.fecha||0);
   });
   var saldo=0;
   var rows=[['FECHA','TIPO','REFERENCIA','ENTRADA','SALIDA','SALDO','NOTA']];
@@ -5037,7 +5142,7 @@ function exportKardex(){
   var url=URL.createObjectURL(blob);
   var a=document.createElement('a');
   a.href=url;
-  a.download='Kardex_'+kardexNombre.replace(/[^a-zA-Z0-9]/g,'_')+'_'+new Date().toISOString().split('T')[0]+'.csv';
+  a.download='Kardex_'+kardexNombre.replace(/[^a-zA-Z0-9]/g,'_')+'_'+hoy()+'.csv';
   a.click();
   URL.revokeObjectURL(url);
   toast('Kardex exportado','ok');
@@ -5234,7 +5339,7 @@ function confirmarWA(){
     var c=clis.find(x=>x.id===v.cliente_id);
     var nomC=c?(c.nombres||c.alias||'Cliente'):'Cliente';
     var rucC=c?c.dni_ruc||'':'';
-    var now=new Date(v.fecha||hoy());
+    var now=pF(v.fecha||hoy());
     var fecha=now.getDate().toString().padStart(2,'0')+'/'+(now.getMonth()+1).toString().padStart(2,'0')+'/'+now.getFullYear();
     // Guardar carrito temporal para PDF
     var carritoTemp=carrito.slice();
@@ -5469,7 +5574,7 @@ function calcularNotificaciones(){
     if(total>ab&&v.fecha_estimada_pago<hoyStr&&v.estado!=='COMPLETADO'&&v.estado!=='ANULADO'){
       var c=clis.find(function(x){return x.id===v.cliente_id;});
       var nom=c?(c.nombres||c.alias||'?'):'?';
-      var diasVenc=Math.floor((new Date(hoyStr)-new Date(v.fecha_estimada_pago))/86400000);
+      var diasVenc=Math.floor((pF(hoyStr)-pF(v.fecha_estimada_pago))/86400000);
       notifs.push({
         tipo:'vencido',
         titulo:'Pago vencido: '+nom,
@@ -5740,7 +5845,7 @@ guardar=async function(){
       comprobante:comp||null,observaciones:obs||null,
       estado:'ENVIADO',proceso:'VENTA',total:sub,descuento:desc,
       fecha_estimada_pago:fep||null,fecha_entrega:fe||null,
-      fecha:now.toISOString().split('T')[0]
+      fecha:hoy()
     };
     var detalleArr=carrito.map(function(item){
       return{id:gid(),venta_id:vid,producto_id:item.id,
@@ -5936,7 +6041,7 @@ function renderHistPagos(){
   const el=document.getElementById('hist-pagos');
   const vCli=ventas.filter(v=>v.cliente_id===histCliId);
   const abonosCli=abonos.filter(a=>vCli.find(v=>v.id===a.venta_id))
-    .sort((a,b)=>new Date(b.fecha||0)-new Date(a.fecha||0));
+    .sort((a,b)=>pF(b.fecha||0)-pF(a.fecha||0));
   if(!abonosCli.length){el.innerHTML='<div class="empty"><p>Sin abonos registrados</p></div>';return;}
   const totalAb=abonosCli.reduce((s,a)=>s+parseFloat(a.monto||0),0);
   el.innerHTML=`<div style="background:#f0fdf4;border-radius:10px;padding:10px 12px;margin-bottom:10px;text-align:center;">
@@ -6005,7 +6110,7 @@ async function generarReporteMensual(){
   const nomMes=MESES[mes]+' '+anio;
 
   const vMes=ventas.filter(v=>{
-    const d=new Date(v.fecha||v.created_at||'');
+    const d=pF(v.fecha||v.created_at||'');
     return d.getMonth()===mes&&d.getFullYear()===anio;
   });
 
@@ -6427,7 +6532,7 @@ function guardarConfigCobr(){
 function calcularRecordatorios(){
   var cfg=getConfigCobr();
   var hoyStr=hoy();
-  var hoyDate=new Date(hoyStr);
+  var hoyDate=pF(hoyStr);
   var alertas=[];
   var historial=JSON.parse(localStorage.getItem('frostech_cobr_hist')||'{}');
 
@@ -6438,7 +6543,7 @@ function calcularRecordatorios(){
     var total=parseFloat(v.total||0);
     if(ab>=total) return; // Ya pagó
 
-    var fechaPago=new Date(v.fecha_estimada_pago);
+    var fechaPago=pF(v.fecha_estimada_pago);
     var diffDias=Math.floor((hoyDate-fechaPago)/86400000);
     var c=clis.find(function(x){return x.id===v.cliente_id;});
     var nomCli=c?(c.nombres||c.alias||'?'):'?';
@@ -6450,7 +6555,7 @@ function calcularRecordatorios(){
       var ultimoEnvio=historial[v.id];
       var debeEnviar=true;
       if(ultimoEnvio){
-        var diasDesdeUltimo=Math.floor((hoyDate-new Date(ultimoEnvio))/86400000);
+        var diasDesdeUltimo=Math.floor((hoyDate-pF(ultimoEnvio))/86400000);
         if(diasDesdeUltimo<cfg.rep) debeEnviar=false;
       }
       if(debeEnviar){
