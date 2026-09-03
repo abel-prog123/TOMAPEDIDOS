@@ -510,7 +510,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
       </div>
       <div class="fg"><label>Observaciones / Dirección</label><textarea id="txt-obs" placeholder="Dirección, referencias..."></textarea></div>
       <div class="fg"><label>Fecha estimada de pago</label><input type="date" id="inp-fep"></div>
-      <div class="fg"><label>Fecha de entrega</label><input type="date" id="inp-fe"></div>
+      <div class="fg"><label>Fecha de entrega estimada</label><input type="date" id="inp-fe"></div>
     </div>
 
     <div class="fs">
@@ -1272,6 +1272,9 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 <div class="mo" id="ME" onclick="cME(event)">
   <div class="modal">
     <div class="mh"></div>
+    <div style="position:absolute;top:14px;right:14px;z-index:5;">
+      <button onclick="cerrarME()" title="Cerrar sin guardar" style="width:34px;height:34px;border-radius:50%;border:1.5px solid var(--bdr);background:var(--card);color:var(--mu);font-size:1.05rem;font-weight:800;cursor:pointer;line-height:1;">✕</button>
+    </div>
     <div class="mtit">✏️ Editar Venta</div>
     <div class="msub" id="MEsub"></div>
 
@@ -1302,8 +1305,11 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="fg"><label>Fecha pago total (comisiones)</label>
       <input type="date" id="e-fpt" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
     </div>
-    <div class="fg"><label>Fecha de entrega</label>
+    <div class="fg"><label>Fecha de entrega estimada</label>
       <input type="date" id="e-fentrega" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
+    </div>
+    <div class="fg"><label>Fecha de entrega real</label>
+      <input type="date" id="e-fentregareal" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
     </div>
     <div class="fg"><label>Observaciones</label>
       <textarea id="e-obs" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;height:60px;resize:none;outline:none;"></textarea>
@@ -2012,6 +2018,15 @@ async function abrirE(vid){
   editId=vid; editTotal=parseFloat(v.total||0);
   window.feP=[]; window.feD=[];
   eAbonos=abonos.filter(a=>a.venta_id===vid).map(a=>({...a}));
+  // Releer abonos desde Supabase: el array local puede estar desactualizado
+  // y hacía que un abono ya guardado no apareciera, provocando que se registre dos veces.
+  sbGet('abonos','?venta_id=eq.'+vid).then(function(rows){
+    if(editId!==vid) return;
+    var pend=eAbonos.filter(function(a){return a.isNew;});
+    eAbonos=rows.map(function(a){return {id:a.id,venta_id:a.venta_id,monto:a.monto,fecha:a.fecha};}).concat(pend);
+    abonos=abonos.filter(function(x){return x.venta_id!==vid;}).concat(rows);
+    renderAb(); uPS();
+  }).catch(function(){});
 
   const c=clis.find(x=>x.id===v.cliente_id);
   document.getElementById('MEsub').textContent=(c?(c.nombres||c.alias):v.cliente_id||'')+' · S/ '+editTotal.toFixed(2);
@@ -2021,6 +2036,7 @@ async function abrirE(vid){
   document.getElementById('e-festimada').value=v.fecha_estimada_pago||'';
   document.getElementById('e-fpt').value=v.fecha_pago_real||'';
   document.getElementById('e-fentrega').value=v.fecha_entrega||'';
+  document.getElementById('e-fentregareal').value=v.fecha_entrega_real||'';
   document.getElementById('e-abm').value='';
   document.getElementById('e-abf').value=hoy();
 
@@ -2091,10 +2107,19 @@ function renderAb(){
     return`<div class="abcard"><div class="abinfo"><div class="abmonto">S/ ${parseFloat(a.monto||0).toFixed(2)}</div><div class="abfecha">📅 ${a.fecha||''}</div></div><button class="abdel" onclick="delAb(${fi})">✕</button></div>`;
   }).join('');
 }
+function cerrarME(){
+  var pend=eAbonos.some(function(a){ return (a.isNew&&!a._del)||(a._del&&!a.isNew&&!a._done); });
+  if(pend&&!confirm('Tienes abonos sin guardar. ¿Cerrar de todos modos y descartarlos?')) return;
+  eAbonos=eAbonos.filter(function(a){ return !a.isNew; });
+  eAbonos.forEach(function(a){ delete a._del; });
+  document.getElementById('ME').classList.remove('open');
+}
 function addAbono(){
   const m=parseFloat(document.getElementById('e-abm').value);
   const f=document.getElementById('e-abf').value;
   if(!m||m<=0){toast('Ingresa un monto válido','err');return;}
+  var dup=eAbonos.some(function(a){ return !a._del&&Math.abs(parseFloat(a.monto||0)-m)<0.005&&a.fecha===f; });
+  if(dup&&!confirm('Ya existe un abono de S/ '+m.toFixed(2)+' con esa misma fecha.\n¿Seguro que quieres agregar otro?')) return;
   eAbonos.push({id:gid(),venta_id:editId,monto:m,fecha:f,isNew:true});
   document.getElementById('e-abm').value='';
   renderAb(); uPS();
@@ -2117,6 +2142,9 @@ async function saveEdit(){
     upd.fecha_estimada_pago=document.getElementById('e-festimada').value||null;
     const fent=document.getElementById('e-fentrega').value;
     if(fent) upd.fecha_entrega=fent;
+    upd.fecha_entrega_real=document.getElementById('e-fentregareal').value||null;
+    // Si se marca ENTREGADO y no se puso fecha real, se asume hoy
+    if(document.getElementById('e-est').value==='ENTREGADO'&&!upd.fecha_entrega_real) upd.fecha_entrega_real=hoy();
     const estadoAnterior=ventas.find(function(v){return v.id===editId;})?.estado||'';
     if(ab>=editTotal&&editTotal>0){upd.estado='COMPLETADO';if(!fpt)upd.fecha_pago_real=hoy();}
     await sbUpd('ventas',editId,upd);
@@ -2125,8 +2153,26 @@ async function saveEdit(){
       await descontarStockVenta(editId);
     }
 
-    // Abonos nuevos
-    for(const a of eAbonos) if(a.isNew&&!a._del) await sbIns('abonos',{id:a.id,venta_id:a.venta_id,monto:a.monto,fecha:a.fecha});
+    // Abonos nuevos (marcamos isNew=false tras insertar para no re-insertar si se guarda otra vez)
+    for(const a of eAbonos){
+      if(a.isNew&&!a._del){
+        await sbIns('abonos',{id:a.id,venta_id:a.venta_id,monto:a.monto,fecha:a.fecha});
+        a.isNew=false;
+        if(!abonos.some(function(x){return x.id===a.id;}))
+          abonos.push({id:a.id,venta_id:a.venta_id,monto:a.monto,fecha:a.fecha});
+      }
+    }
+    // Abonos eliminados
+    for(const a of eAbonos){
+      if(a._del&&!a.isNew&&!a._done){
+        try{ await sb('abonos','DELETE',null,'?id=eq.'+a.id); }catch(e){ console.error('Error borrando abono:',e); }
+        a._done=true;
+      }
+    }
+    abonos=abonos.filter(function(x){
+      return !eAbonos.some(function(a){ return a._del&&a.id===x.id; });
+    });
+    eAbonos=eAbonos.filter(function(a){ return !a._del; });
 
     // Fotos nuevas pago
     for(const f of feP){
@@ -2408,6 +2454,7 @@ async function saveProd(){
       prods.sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
     }
     renderP(prods);
+    if(document.getElementById('stock-productos')) renderStockProds();
     toast('✓ Producto guardado','ok');
     document.getElementById('MEP').classList.remove('open');
   }catch(e){toast('Error: '+e.message,'err');}
@@ -2416,14 +2463,9 @@ async function saveProd(){
 
 async function deleteProd(){
   if(!editProdId) return;
-  if(!confirm('¿Eliminar este producto? Esta acción no se puede deshacer.')) return;
-  try{
-    await sb('productos','DELETE',null,'?id=eq.'+editProdId);
-    prods=prods.filter(x=>x.id!==editProdId);
-    renderP(prods);
-    toast('✓ Producto eliminado','ok');
-    document.getElementById('MEP').classList.remove('open');
-  }catch(e){toast('Error: '+e.message,'err');}
+  const _id=editProdId;
+  document.getElementById('MEP').classList.remove('open');
+  await borrarProdStock(_id);
 }
 
 // ── EDITAR/NUEVO CLIENTE ──────────────────────────────────
@@ -2716,7 +2758,8 @@ async function renderDespachos(){
     
     let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
       <div style="font-size:.82rem;font-weight:800;color:var(--mu);">📦 ${activas.length} pedido${activas.length>1?'s':''} pendientes</div>
-      <button onclick="exportDespachos()" style="padding:6px 12px;background:var(--a);color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">📥 Exportar</button>
+      <button onclick="exportDespachos()" style="padding:6px 12px;background:var(--a);color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">📄 PDF</button>
+      <button onclick="exportDespachosExcel()" style="padding:6px 12px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;margin-left:6px;">📊 Excel</button>
     </div>`;
 
     activas.forEach(v=>{
@@ -2754,6 +2797,66 @@ async function renderDespachos(){
     });
     el.innerHTML=html;
   }catch(e){el.innerHTML=`<div class="empty"><p>Error: ${e.message}</p></div>`;}
+}
+
+// ── EXPORTAR DESPACHOS A EXCEL ───────────────────────────
+async function exportDespachosExcel(){
+  toast('Generando Excel...','ok');
+  try{
+    var allDets=await sbGet('detalle_ventas');
+    _ensureXLSX(function(){
+      try{
+        var hoyStr=hoy();
+        var activas=ventas.filter(function(v){ return v.estado!=='ANULADO'&&v.estado!=='COMPLETADO'; });
+        activas.sort(function(a,b){
+          var fa=a.fecha_entrega||'9999-12-31', fb=b.fecha_entrega||'9999-12-31';
+          if(fa!==fb) return fa<fb?-1:1;
+          return (a.fecha||'')<(b.fecha||'')?-1:1;
+        });
+
+        function filas(arr){
+          var out=[['Estado entrega','Días','F. entrega estimada','F. entrega real','Cliente','Dirección','Productos','Vendedor','Estado','Forma pago','Total S/','Abonado S/','Pendiente S/','Estado pago','F. pedido','Nº venta']];
+          arr.forEach(function(v){
+            var c=clis.find(function(x){return x.id===v.cliente_id;});
+            var nom=c?(c.nombres||c.alias||v.cliente_id):(v.cliente_id||'Sin nombre');
+            var dets=allDets.filter(function(d){return d.venta_id===v.id;});
+            var prodTxt=dets.length?dets.map(function(d){
+              var pr=prods.find(function(p){return p.id===d.producto_id;})||{nombre:d.producto_id};
+              return d.cantidad+'x '+pr.nombre;
+            }).join(' | '):'Sin detalle';
+            var tot=parseFloat(v.total||0), ab=getAb(v.id), pend=tot-ab;
+            var fest=v.fecha_entrega||'', freal=v.fecha_entrega_real||'';
+            var estEnt, dias='';
+            if(freal){
+              estEnt='ENTREGADO';
+              if(fest){
+                var d1=Math.round((pF(freal)-pF(fest))/86400000);
+                dias=d1>0?('+'+d1+' tarde'):(d1<0?(d1+' antes'):'a tiempo');
+              }
+            } else if(fest){
+              var d2=Math.round((pF(hoyStr)-pF(fest))/86400000);
+              if(d2>0){ estEnt='🔴 ATRASADO'; dias=d2+' días'; }
+              else if(d2===0){ estEnt='🟡 ENTREGA HOY'; dias='hoy'; }
+              else { estEnt='🟢 PROGRAMADO'; dias='en '+(-d2)+' días'; }
+            } else { estEnt='⚪ SIN FECHA'; }
+            out.push([estEnt,dias,fest,freal,nom,(c&&c.direccion)||'',prodTxt,v.vendedor||'',v.estado||'',
+              v.forma_pago||'',_r4(tot),_r4(ab),_r4(pend),getPS(tot,ab).toUpperCase(),v.fecha||'',v.id]);
+          });
+          return out;
+        }
+
+        var atrasados=activas.filter(function(v){ return !v.fecha_entrega_real&&v.fecha_entrega&&v.fecha_entrega<hoyStr; });
+        var wb=XLSX.utils.book_new();
+        var cols=[{wch:15},{wch:11},{wch:19},{wch:17},{wch:30},{wch:32},{wch:46},{wch:11},{wch:12},{wch:13},{wch:11},{wch:12},{wch:13},{wch:13},{wch:12},{wch:12}];
+        var w1=XLSX.utils.aoa_to_sheet(filas(activas)); w1['!cols']=cols; w1['!autofilter']={ref:'A1:P1'}; w1['!freeze']={xSplit:0,ySplit:1};
+        XLSX.utils.book_append_sheet(wb,w1,'Pendientes');
+        var w2=XLSX.utils.aoa_to_sheet(filas(atrasados)); w2['!cols']=cols; w2['!autofilter']={ref:'A1:P1'};
+        XLSX.utils.book_append_sheet(wb,w2,'Atrasados');
+        XLSX.writeFile(wb,'Despachos_'+hoyStr+'.xlsx');
+        toast('✓ Excel generado ('+activas.length+' pendientes, '+atrasados.length+' atrasados)','ok');
+      }catch(e){ toast('Error al exportar: '+e.message,'err'); }
+    });
+  }catch(e){ toast('Error cargando detalles: '+e.message,'err'); }
 }
 
 // ── EXPORTAR DESPACHOS ────────────────────────────────────
@@ -3708,7 +3811,9 @@ function renderStockProds(){
         <div class="stock-actions">
           <button class="stock-btn entrada" onclick="abrirCalcProd('${p.id}')">🏭 Producir</button>
           <button class="stock-btn edit" onclick="abrirMov('prod','${p.id}','${p.nombre}','ajuste')">⚖️ Ajuste</button>
-          <button class="stock-btn edit" onclick="editStockProd('${p.id}')">⚙️ Config</button>
+          <button class="stock-btn edit" onclick="abrirEP('${p.id}')">✏️ Editar</button>
+          <button class="stock-btn edit" onclick="editStockProd('${p.id}')">⚙️ Mínimo</button>
+          <button class="stock-btn" onclick="borrarProdStock('${p.id}')" style="background:#fee2e2;color:#b91c1c;">🗑️</button>
         </div>
       </div>
       <div class="stock-nums">
@@ -3920,6 +4025,48 @@ function renderMovimientos(){
 }
 
 // Editar stock mínimo y unidad de producto
+// ── BORRAR PRODUCTO DESDE STOCK (con verificación) ────────
+async function borrarProdStock(id){
+  const p=prods.find(x=>x.id===id); if(!p) return;
+  toast('Verificando...','ok');
+  let nVentas=0, detErr=false;
+  try{
+    const dets=await sbGet('detalle_ventas','?producto_id=eq.'+encodeURIComponent(id)+'&select=venta_id');
+    nVentas=dets.length;
+  }catch(e){ detErr=true; }
+  const nRec=recetas.filter(function(r){return r.producto_id===id;}).length;
+  const act=parseFloat(p.stock_actual||0);
+
+  if(detErr){
+    toast('No se pudo verificar el histórico. Revisa tu conexión.','err');
+    return;
+  }
+  if(nVentas>0){
+    alert('❌ No se puede eliminar "'+p.nombre+'".\n\n'
+      +'Aparece en '+nVentas+' venta'+(nVentas>1?'s':'')+' registrada'+(nVentas>1?'s':'')+'. '
+      +'Si lo borras, esas ventas quedarían sin producto y perderías el historial.\n\n'
+      +'Si ya no lo vendes, cámbiale el nombre agregando "(DESCONTINUADO)" '
+      +'con el botón ✏️ Editar y pon su stock mínimo en 0.');
+    return;
+  }
+  var aviso='¿Eliminar "'+p.nombre+'"?\n\n';
+  if(nRec>0) aviso+='⚠️ Tiene '+nRec+' línea'+(nRec>1?'s':'')+' de receta que también se borrarán.\n';
+  if(act>0)  aviso+='⚠️ Tiene '+act+' unidades en stock.\n';
+  aviso+='\nEsta acción no se puede deshacer.';
+  if(!confirm(aviso)) return;
+
+  try{
+    if(nRec>0) await sb('recetas','DELETE',null,'?producto_id=eq.'+encodeURIComponent(id));
+    await sb('movimientos_stock','DELETE',null,'?producto_id=eq.'+encodeURIComponent(id)).catch(function(){});
+    await sb('productos','DELETE',null,'?id=eq.'+encodeURIComponent(id));
+    prods=prods.filter(function(x){return x.id!==id;});
+    recetas=recetas.filter(function(r){return r.producto_id!==id;});
+    renderStockProds();
+    if(typeof renderP==='function') renderP(prods);
+    toast('✓ Producto eliminado','ok');
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
+
 function editStockProd(id){
   const p=prods.find(x=>x.id===id); if(!p) return;
   const min=prompt(`Stock mínimo para "${p.nombre}" (actual: ${p.stock_minimo||0}):`,p.stock_minimo||0);
