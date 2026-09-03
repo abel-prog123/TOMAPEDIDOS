@@ -1580,6 +1580,7 @@ function rmFN(arr,i,scId,fid){window[arr].splice(i,1);renderFN(scId,arr,fid);}
 function renderFE(scId,arr,fid){
   const sc=document.getElementById(scId); sc.innerHTML='';
   (window[arr]||[]).forEach((f,i)=>{
+    if(f._del) return;
     const d=document.createElement('div'); d.className='fthumb';
     const src=f.preview||f.url||'';
     if(src){
@@ -1607,7 +1608,18 @@ function addFE(fid,scId,arr){
   renderFE(scId,arr,fid);
   input.value='';
 }
-function rmFE(arr,i,scId,fid){window[arr].splice(i,1);renderFE(scId,arr,fid);}
+function rmFE(arr,i,scId,fid){
+  const f=(window[arr]||[])[i];
+  if(!f) return;
+  // Si ya está guardada en Supabase, la marcamos para borrar al guardar.
+  // Si es nueva (aún no subida), basta con sacarla de la lista.
+  if(f.isNew||!f.id){ window[arr].splice(i,1); }
+  else{
+    if(!confirm('¿Eliminar esta foto? Se borrará al guardar los cambios.')) return;
+    f._del=true;
+  }
+  renderFE(scId,arr,fid);
+}
 
 // ── UPLOAD A SUPABASE STORAGE ─────────────────────────────
 async function uploadFile(fObj, prefix){
@@ -2134,8 +2146,12 @@ function renderAb(){
   }).join('');
 }
 function cerrarME(){
-  var pend=eAbonos.some(function(a){ return (a.isNew&&!a._del)||(a._del&&!a.isNew&&!a._done); });
-  if(pend&&!confirm('Tienes abonos sin guardar. ¿Cerrar de todos modos y descartarlos?')) return;
+  var pendAb=eAbonos.some(function(a){ return (a.isNew&&!a._del)||(a._del&&!a.isNew&&!a._done); });
+  var pendFo=[].concat(window.feP||[],window.feD||[]).some(function(f){ return (f.isNew&&!f._del)||(f._del&&!f._done); });
+  if((pendAb||pendFo)&&!confirm('Tienes cambios sin guardar (abonos o fotos). ¿Cerrar y descartarlos?')) return;
+  [].concat(window.feP||[],window.feD||[]).forEach(function(f){ delete f._del; });
+  window.feP=(window.feP||[]).filter(function(f){return !f.isNew;});
+  window.feD=(window.feD||[]).filter(function(f){return !f.isNew;});
   eAbonos=eAbonos.filter(function(a){ return !a.isNew; });
   eAbonos.forEach(function(a){ delete a._del; });
   document.getElementById('ME').classList.remove('open');
@@ -2225,7 +2241,7 @@ async function saveEdit(){
           if(u){
             const reg={id:gid(),venta_id:editId,url:u};
             await sbIns('fotos_pagos',reg);
-            f.isNew=false; f.url=u; delete f.preview;
+            f.isNew=false; f.url=u; f.id=reg.id; delete f.preview;
             fPagos.push(reg); nFotos++;
           }
         }catch(e){ errFotos++; console.error('Error foto pago edit:',e); }
@@ -2239,19 +2255,46 @@ async function saveEdit(){
           if(u){
             const reg={id:gid(),venta_id:editId,url:u};
             await sbIns('fotos_despachos',reg);
-            f.isNew=false; f.url=u; delete f.preview;
+            f.isNew=false; f.url=u; f.id=reg.id; delete f.preview;
             fDesps.push(reg); nFotos++;
           }
         }catch(e){ errFotos++; console.error('Error foto desp edit:',e); }
       }
     }
-    if(errFotos>0) toast('⚠️ '+errFotos+' foto(s) no se pudieron subir','err');
+    // Fotos eliminadas: borrarlas de la base y del almacenamiento
+    var nBorradas=0;
+    for(const par of [['fotos_pagos','feP',fPagos],['fotos_despachos','feD',fDesps]]){
+      const tabla=par[0], lista=window[par[1]]||[], cache=par[2];
+      for(const f of lista){
+        if(f._del&&f.id&&!f._done){
+          try{
+            await sb(tabla,'DELETE',null,'?id=eq.'+encodeURIComponent(f.id));
+            // borrar también el archivo del bucket (si falla no es grave)
+            if(f.url&&f.url.indexOf('/FOTOS/')>=0){
+              const ruta=f.url.split('/FOTOS/')[1];
+              fetch(SB_URL+'/storage/v1/object/FOTOS/'+ruta,
+                {method:'DELETE',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}}).catch(function(){});
+            }
+            f._done=true; nBorradas++;
+            const ci=cache.findIndex(function(x){return x.id===f.id;});
+            if(ci>=0) cache.splice(ci,1);
+          }catch(e){ errFotos++; console.error('Error borrando foto:',e); }
+        }
+      }
+    }
+    window.feP=(window.feP||[]).filter(function(f){return !f._del;});
+    window.feD=(window.feD||[]).filter(function(f){return !f._del;});
+
+    if(errFotos>0) toast('⚠️ '+errFotos+' foto(s) dieron error','err');
 
     // Actualizar local
     const vi=ventas.findIndex(x=>x.id===editId);
     if(vi>=0) Object.assign(ventas[vi],upd);
     renderV(ventas);
-    toast(nFotos>0?('✓ Venta actualizada · '+nFotos+' foto(s) subida(s)'):'✓ Venta actualizada','ok');
+    var msgF=[];
+    if(nFotos>0) msgF.push(nFotos+' subida(s)');
+    if(nBorradas>0) msgF.push(nBorradas+' borrada(s)');
+    toast(msgF.length?('✓ Venta actualizada · foto(s): '+msgF.join(', ')):'✓ Venta actualizada','ok');
     document.getElementById('ME').classList.remove('open');
 
     // Recargar en background
