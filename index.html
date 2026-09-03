@@ -158,6 +158,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 .vamt{font-size:.88rem;font-weight:800;color:var(--a);}
 .ebadge{padding:2px 7px;border-radius:7px;font-size:.6rem;font-weight:800;text-transform:uppercase;}
 .eENVIADO{background:#dbeafe;color:#1d4ed8;}
+.ePARCIAL{background:#ffedd5;color:#9a3412;}
 .eCOMPLETADO{background:#d1fae5;color:#065f46;}
 .ePENDIENTE{background:#fef3c7;color:#92400e;}
 .pmini{font-size:.6rem;font-weight:700;padding:2px 6px;border-radius:5px;}
@@ -1286,15 +1287,22 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     </div>
 
     <div class="sdiv">Datos generales</div>
-    <div class="fg"><label>Estado</label>
+    <div class="fg"><label>Estado de venta / pago</label>
       <select class="msel" id="e-est">
-        <option value="ENVIADO">ENVIADO</option>
-        <option value="PENDIENTE">PENDIENTE</option>
-        <option value="EN CAMINO">EN CAMINO</option>
-        <option value="ENTREGADO">ENTREGADO</option>
-        <option value="COMPLETADO">COMPLETADO</option>
+        <option value="PENDIENTE">PENDIENTE — falta cobrar</option>
+        <option value="COMPLETADO">COMPLETADO — pagado</option>
         <option value="ANULADO">ANULADO</option>
       </select>
+      <div style="font-size:.7rem;color:var(--mu);margin-top:4px;">Se marca solo al completarse los abonos. Puedes cambiarlo a mano.</div>
+    </div>
+    <div class="fg"><label>Estado de despacho</label>
+      <select class="msel" id="e-desp">
+        <option value="PENDIENTE">PENDIENTE — no ha salido</option>
+        <option value="EN CAMINO">EN CAMINO</option>
+        <option value="PARCIAL">PARCIAL — falta parte</option>
+        <option value="ENTREGADO">ENTREGADO</option>
+      </select>
+      <div style="font-size:.7rem;color:var(--mu);margin-top:4px;">Si es PARCIAL, anota en Observaciones qué falta.</div>
     </div>
     <div class="fg"><label>Forma de pago</label>
       <select class="msel" id="e-pago"><option value="">-- Seleccionar --</option><option>EFECTIVO</option><option>YAPE/PLIN</option><option>TRANSFERENCIA</option><option>CREDITO</option></select>
@@ -1815,7 +1823,7 @@ async function guardar(){
     await sbIns('ventas',{
       id:vid, cliente_id:cli, vendedor:vend, forma_pago:pago,
       comprobante:comp||null, observaciones:obs||null,
-      estado:'ENVIADO', proceso:'VENTA', total:sub, descuento:desc,
+      estado:'PENDIENTE',estado_despacho:'PENDIENTE', proceso:'VENTA', total:sub, descuento:desc,
       fecha_estimada_pago:fep||null, fecha_entrega:fe||null,
       fecha:hoy()
     });
@@ -1874,7 +1882,7 @@ async function guardar(){
     // 6. Actualizar estado local y UI
     const newVenta={
       id:vid, cliente_id:cli, vendedor:vend, forma_pago:pago,
-      comprobante:comp, observaciones:obs, estado:'ENVIADO',
+      comprobante:comp, observaciones:obs, estado:'PENDIENTE', estado_despacho:'PENDIENTE',
       total:sub, descuento:desc,
       fecha:hoy(),
       created_at:now.toISOString()
@@ -1984,7 +1992,7 @@ function renderV(list){
         dvs.forEach(v=>{
           const c=clis.find(x=>x.id===v.cliente_id);
           const nom=c?(c.nombres||c.alias||v.cliente_id):(v.cliente_id||'Sin nombre');
-          const est=v.estado||'ENVIADO';
+          const est=v.estado||'PENDIENTE';
           const tot=parseFloat(v.total||0);
           const ab=getAb(v.id);
           const ps=getPS(tot,ab);
@@ -1997,6 +2005,7 @@ function renderV(list){
             <div class="vr">
               <span class="vamt">S/ ${tot.toFixed(2)}</span>
               <span class="ebadge e${est}">${est}</span>
+              ${dspBadge(v)}
               <span class="pmini ${ps}">${psl}</span>
             </div>
           </div>`;
@@ -2030,13 +2039,14 @@ async function abrirE(vid){
 
   const c=clis.find(x=>x.id===v.cliente_id);
   document.getElementById('MEsub').textContent=(c?(c.nombres||c.alias):v.cliente_id||'')+' · S/ '+editTotal.toFixed(2);
-  document.getElementById('e-est').value=v.estado||'ENVIADO';
+  document.getElementById('e-est').value=v.estado||'PENDIENTE';
   document.getElementById('e-pago').value=v.forma_pago||'';
   document.getElementById('e-obs').value=v.observaciones||'';
   document.getElementById('e-festimada').value=v.fecha_estimada_pago||'';
   document.getElementById('e-fpt').value=v.fecha_pago_real||'';
   document.getElementById('e-fentrega').value=v.fecha_entrega||'';
   document.getElementById('e-fentregareal').value=v.fecha_entrega_real||'';
+  document.getElementById('e-desp').value=v.estado_despacho||'PENDIENTE';
   document.getElementById('e-abm').value='';
   document.getElementById('e-abf').value=hoy();
 
@@ -2087,6 +2097,18 @@ async function abrirE(vid){
 }
 function cME(e){if(e.target===document.getElementById('ME'))document.getElementById('ME').classList.remove('open');}
 
+// Insignia de estado de despacho para la lista de ventas
+function dspBadge(v){
+  if(v.estado==='ANULADO') return '';
+  var d=v.estado_despacho||'PENDIENTE';
+  var col={'PENDIENTE':['#fef3c7','#92400e','📦 POR DESPACHAR'],
+           'EN CAMINO':['#dbeafe','#1e40af','🚚 EN CAMINO'],
+           'PARCIAL':['#ffedd5','#9a3412','⚠️ PARCIAL'],
+           'ENTREGADO':['#dcfce7','#166534','✓ ENTREGADO']}[d];
+  if(!col) return '';
+  return '<span style="font-size:.6rem;font-weight:800;padding:2px 6px;border-radius:6px;background:'
+    +col[0]+';color:'+col[1]+';white-space:nowrap;">'+col[2]+'</span>';
+}
 function uPS(){
   const ab=eAbonos.filter(a=>!a._del).reduce((s,a)=>s+parseFloat(a.monto||0),0);
   const pct=editTotal>0?Math.min(100,(ab/editTotal)*100):0;
@@ -2143,13 +2165,29 @@ async function saveEdit(){
     const fent=document.getElementById('e-fentrega').value;
     if(fent) upd.fecha_entrega=fent;
     upd.fecha_entrega_real=document.getElementById('e-fentregareal').value||null;
+    // ── Estado de despacho (independiente del pago) ──
+    const desp=document.getElementById('e-desp').value||'PENDIENTE';
+    upd.estado_despacho=desp;
     // Si se marca ENTREGADO y no se puso fecha real, se asume hoy
-    if(document.getElementById('e-est').value==='ENTREGADO'&&!upd.fecha_entrega_real) upd.fecha_entrega_real=hoy();
-    const estadoAnterior=ventas.find(function(v){return v.id===editId;})?.estado||'';
-    if(ab>=editTotal&&editTotal>0){upd.estado='COMPLETADO';if(!fpt)upd.fecha_pago_real=hoy();}
+    if(desp==='ENTREGADO'&&!upd.fecha_entrega_real) upd.fecha_entrega_real=hoy();
+
+    // ── Estado de venta / pago ──
+    // Se completa solo cuando los abonos cubren el total, pero si el
+    // usuario lo cambió a mano en este guardado, su decisión manda
+    // (sirve para cerrar ventas que quedan cortas por centimos).
+    const ventaPrev=ventas.find(function(v){return v.id===editId;})||{};
+    const despAnterior=ventaPrev.estado_despacho||'';
+    const estadoElegido=document.getElementById('e-est').value;
+    const cambioManual=estadoElegido!==(ventaPrev.estado||'');
+    if(!cambioManual&&ab>=editTotal&&editTotal>0&&estadoElegido!=='ANULADO'){
+      upd.estado='COMPLETADO';
+      if(!fpt)upd.fecha_pago_real=hoy();
+    }
+    if(upd.estado==='COMPLETADO'&&!upd.fecha_pago_real&&!fpt) upd.fecha_pago_real=hoy();
+
     await sbUpd('ventas',editId,upd);
-    // Descontar stock si cambia a ENTREGADO
-    if(upd.estado==='ENTREGADO'&&estadoAnterior!=='ENTREGADO'){
+    // Descontar stock cuando el despacho pasa a ENTREGADO
+    if(desp==='ENTREGADO'&&despAnterior!=='ENTREGADO'){
       await descontarStockVenta(editId);
     }
 
@@ -2750,7 +2788,7 @@ async function renderDespachos(){
     // Cargar detalles de ventas para mostrar productos
     const hoy=window.hoy();
     // Ventas activas (no anuladas, no completadas)
-    const activas=ventas.filter(v=>v.estado!=='ANULADO'&&v.estado!=='COMPLETADO');
+    const activas=ventas.filter(v=>v.estado!=='ANULADO'&&(v.estado_despacho||'PENDIENTE')!=='ENTREGADO');
     if(!activas.length){el.innerHTML='<div class="empty"><p>No hay pedidos pendientes</p></div>';return;}
 
     // Cargar detalles
@@ -2768,7 +2806,7 @@ async function renderDespachos(){
       const dir=c?c.direccion:'';
       const ubi=c?c.ubicacion:'';
       const dets=allDets.filter(d=>d.venta_id===v.id);
-      const est=v.estado||'ENVIADO';
+      const est=v.estado||'PENDIENTE';
       const clsMap={'ENTREGADO':'entregado','ANULADO':'anulado'};
       const cls=clsMap[est]||'';
       const ab=getAb(v.id);
@@ -2807,7 +2845,7 @@ async function exportDespachosExcel(){
     _ensureXLSX(function(){
       try{
         var hoyStr=hoy();
-        var activas=ventas.filter(function(v){ return v.estado!=='ANULADO'&&v.estado!=='COMPLETADO'; });
+        var activas=ventas.filter(function(v){ return v.estado!=='ANULADO'&&(v.estado_despacho||'PENDIENTE')!=='ENTREGADO'; });
         activas.sort(function(a,b){
           var fa=a.fecha_entrega||'9999-12-31', fb=b.fecha_entrega||'9999-12-31';
           if(fa!==fb) return fa<fb?-1:1;
@@ -2815,7 +2853,7 @@ async function exportDespachosExcel(){
         });
 
         function filas(arr){
-          var out=[['Estado entrega','Días','F. entrega estimada','F. entrega real','Cliente','Dirección','Productos','Vendedor','Estado','Forma pago','Total S/','Abonado S/','Pendiente S/','Estado pago','F. pedido','Nº venta']];
+          var out=[['Estado entrega','Días','F. entrega estimada','F. entrega real','Cliente','Dirección','Productos','Vendedor','Estado despacho','Forma pago','Total S/','Abonado S/','Pendiente S/','Estado pago','F. pedido','Nº venta']];
           arr.forEach(function(v){
             var c=clis.find(function(x){return x.id===v.cliente_id;});
             var nom=c?(c.nombres||c.alias||v.cliente_id):(v.cliente_id||'Sin nombre');
@@ -2839,21 +2877,25 @@ async function exportDespachosExcel(){
               else if(d2===0){ estEnt='🟡 ENTREGA HOY'; dias='hoy'; }
               else { estEnt='🟢 PROGRAMADO'; dias='en '+(-d2)+' días'; }
             } else { estEnt='⚪ SIN FECHA'; }
-            out.push([estEnt,dias,fest,freal,nom,(c&&c.direccion)||'',prodTxt,v.vendedor||'',v.estado||'',
+            if((v.estado_despacho||'')==='PARCIAL') estEnt='🟠 PARCIAL';
+            out.push([estEnt,dias,fest,freal,nom,(c&&c.direccion)||'',prodTxt,v.vendedor||'',(v.estado_despacho||'PENDIENTE'),
               v.forma_pago||'',_r4(tot),_r4(ab),_r4(pend),getPS(tot,ab).toUpperCase(),v.fecha||'',v.id]);
           });
           return out;
         }
 
         var atrasados=activas.filter(function(v){ return !v.fecha_entrega_real&&v.fecha_entrega&&v.fecha_entrega<hoyStr; });
+        var parciales=activas.filter(function(v){ return (v.estado_despacho||'')==='PARCIAL'; });
         var wb=XLSX.utils.book_new();
         var cols=[{wch:15},{wch:11},{wch:19},{wch:17},{wch:30},{wch:32},{wch:46},{wch:11},{wch:12},{wch:13},{wch:11},{wch:12},{wch:13},{wch:13},{wch:12},{wch:12}];
         var w1=XLSX.utils.aoa_to_sheet(filas(activas)); w1['!cols']=cols; w1['!autofilter']={ref:'A1:P1'}; w1['!freeze']={xSplit:0,ySplit:1};
         XLSX.utils.book_append_sheet(wb,w1,'Pendientes');
         var w2=XLSX.utils.aoa_to_sheet(filas(atrasados)); w2['!cols']=cols; w2['!autofilter']={ref:'A1:P1'};
         XLSX.utils.book_append_sheet(wb,w2,'Atrasados');
+        var w3=XLSX.utils.aoa_to_sheet(filas(parciales)); w3['!cols']=cols; w3['!autofilter']={ref:'A1:P1'};
+        XLSX.utils.book_append_sheet(wb,w3,'Parciales');
         XLSX.writeFile(wb,'Despachos_'+hoyStr+'.xlsx');
-        toast('✓ Excel generado ('+activas.length+' pendientes, '+atrasados.length+' atrasados)','ok');
+        toast('✓ Excel: '+activas.length+' pendientes, '+atrasados.length+' atrasados, '+parciales.length+' parciales','ok');
       }catch(e){ toast('Error al exportar: '+e.message,'err'); }
     });
   }catch(e){ toast('Error cargando detalles: '+e.message,'err'); }
@@ -2861,7 +2903,7 @@ async function exportDespachosExcel(){
 
 // ── EXPORTAR DESPACHOS ────────────────────────────────────
 async function exportDespachos(){
-  const activas=ventas.filter(v=>v.estado!=='ANULADO'&&v.estado!=='COMPLETADO');
+  const activas=ventas.filter(v=>v.estado!=='ANULADO'&&(v.estado_despacho||'PENDIENTE')!=='ENTREGADO');
   const allDets=await sbGet('detalle_ventas');
   const{jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:'mm',format:'a4'});
@@ -3383,7 +3425,7 @@ const EMPRESA_OC={
   tel:'946 901 261',
   email:'asesoriasfrostech@gmail.com'
 };
-var MRP_PENDIENTES=['ENVIADO','PENDIENTE','EN CAMINO'];
+var MRP_PENDIENTES=['PENDIENTE','EN CAMINO','PARCIAL'];
 var _mrp=null;
 var ordenesCompra=[];
 var _ocActual=null;
@@ -3392,7 +3434,7 @@ var _ocActual=null;
 async function calcularMRP(){
   var dets=[];
   try{ dets=await sbGet('detalle_ventas'); }catch(e){ dets=[]; }
-  var pend=ventas.filter(function(v){return MRP_PENDIENTES.indexOf(v.estado||'ENVIADO')>=0;});
+  var pend=ventas.filter(function(v){return v.estado!=='ANULADO'&&MRP_PENDIENTES.indexOf(v.estado_despacho||'PENDIENTE')>=0;});
   var idsPend={}; pend.forEach(function(v){idsPend[v.id]=true;});
   var demProd={};
   dets.forEach(function(d){
@@ -3462,7 +3504,7 @@ async function renderMRP(){
       +'<div style="flex:1;text-align:center;"><div style="font-size:1.3rem;font-weight:900;color:var(--p);">'+nComprar+'</div><div style="font-size:.66rem;color:var(--mu);">a comprar</div></div></div>';
 
     if(!r.pendientes){
-      h+='<div class="empty"><p>No hay pedidos pendientes.<br>El MRP se calcula sobre ventas en estado ENVIADO, PENDIENTE o EN CAMINO.</p></div>';
+      h+='<div class="empty"><p>No hay pedidos pendientes.<br>El MRP se calcula sobre ventas con despacho PENDIENTE, EN CAMINO o PARCIAL.</p></div>';
       el.innerHTML=h; return;
     }
     // Producción
@@ -5890,7 +5932,7 @@ function buscarGlobal(q){
           <div class="busq-nombre">${nom}</div>
           <div class="busq-meta">${v.fecha||''} · S/ ${parseFloat(v.total||0).toFixed(2)} · ${v.estado||''} · ${v.vendedor||''}</div>
         </div>
-        <span class="ebadge e${v.estado||'ENVIADO'}" style="font-size:.6rem;flex-shrink:0;">${v.estado||'ENVIADO'}</span>
+        <span class="ebadge e${v.estado||'PENDIENTE'}" style="font-size:.6rem;flex-shrink:0;">${v.estado||'PENDIENTE'}</span>
       </div>`;
     }).join('');
     total+=rVentas.length;
@@ -5990,7 +6032,7 @@ guardar=async function(){
     var ventaObj={
       id:vid,cliente_id:cli,vendedor:vend,forma_pago:pago,
       comprobante:comp||null,observaciones:obs||null,
-      estado:'ENVIADO',proceso:'VENTA',total:sub,descuento:desc,
+      estado:'PENDIENTE',estado_despacho:'PENDIENTE',proceso:'VENTA',total:sub,descuento:desc,
       fecha_estimada_pago:fep||null,fecha_entrega:fe||null,
       fecha:hoy()
     };
