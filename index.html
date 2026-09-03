@@ -1402,7 +1402,24 @@ async function sb(table, method='GET', body=null, filters=''){
   if(method==='GET') return r.json();
   return true;
 }
-async function sbGet(table,filters=''){return sb(table,'GET',null,filters);}
+// Supabase devuelve como máximo 1000 filas por consulta. Con más de
+// 1000 ventas o detalles, los registros más recientes no llegaban y
+// la app mostraba "Sin detalle", comisiones incompletas, etc.
+// sbGet ahora pagina automáticamente hasta traerlo todo.
+async function sbGet(table,filters=''){
+  const PAGE=1000;
+  let out=[], off=0;
+  for(let i=0;i<50;i++){
+    const sep=filters&&filters.indexOf('?')>=0?'&':(filters?'&':'?');
+    const f=filters+sep+'limit='+PAGE+'&offset='+off;
+    const chunk=await sb(table,'GET',null,f);
+    if(!Array.isArray(chunk)) return chunk;
+    out=out.concat(chunk);
+    if(chunk.length<PAGE) break;
+    off+=PAGE;
+  }
+  return out;
+}
 async function sbIns(table,body){return sb(table,'POST',body);}
 async function sbUpd(table,id,body){return sb(table,'PATCH',body,`?id=eq.${id}`);}
 
@@ -2858,7 +2875,7 @@ async function renderDespachos(){
     const allDets=await sbGet('detalle_ventas');
     
     let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <div style="font-size:.82rem;font-weight:800;color:var(--mu);">📦 ${activas.length} pedido${activas.length>1?'s':''} pendientes</div>
+      <div style="font-size:.82rem;font-weight:800;color:var(--mu);">📦 ${activas.length} pedido${activas.length>1?'s':''} pendiente${activas.length>1?'s':''}</div>
       <button onclick="exportDespachos()" style="padding:6px 12px;background:var(--a);color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">📄 PDF</button>
       <button onclick="exportDespachosExcel()" style="padding:6px 12px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;margin-left:6px;">📊 Excel</button>
     </div>`;
