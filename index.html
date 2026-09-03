@@ -1432,7 +1432,11 @@ let editMPId=null, movTarget=null, movTargetType=null;
 let editRecetaProdId=null, editGranelId=null, editRecetaGranelId=null, editRecetaPGId=null;
 let carrito=[], mProd=null, mQty=1;
 let editId=null, editTotal=0;
-let fpN=[], fdN=[], feP=[], feD=[];
+// IMPORTANTE: deben ser 'var' y no 'let'.
+// Con 'let' la variable NO queda en window, y como addFE/renderFE
+// escriben en window[arr], las fotos se guardaban en una variable
+// distinta a la que leía saveEdit: nunca se subían.
+var fpN=[], fdN=[], feP=[], feD=[];
 let eAbonos=[];
 
 // ── INIT ──────────────────────────────────────────────────
@@ -2213,25 +2217,41 @@ async function saveEdit(){
     eAbonos=eAbonos.filter(function(a){ return !a._del; });
 
     // Fotos nuevas pago
-    for(const f of feP){
+    var nFotos=0, errFotos=0;
+    for(const f of (window.feP||[])){
       if(f.isNew){
-        try{const u=await uploadFile(f,'pago_'+editId+'_'+Date.now());if(u)await sbIns('fotos_pagos',{id:gid(),venta_id:editId,url:u});}
-        catch(e){console.error('Error foto pago edit:',e);}
+        try{
+          const u=await uploadFile(f,'pago_'+editId+'_'+Date.now());
+          if(u){
+            const reg={id:gid(),venta_id:editId,url:u};
+            await sbIns('fotos_pagos',reg);
+            f.isNew=false; f.url=u; delete f.preview;
+            fPagos.push(reg); nFotos++;
+          }
+        }catch(e){ errFotos++; console.error('Error foto pago edit:',e); }
       }
     }
     // Fotos nuevas despacho
-    for(const f of feD){
+    for(const f of (window.feD||[])){
       if(f.isNew){
-        try{const u=await uploadFile(f,'desp_'+editId+'_'+Date.now());if(u)await sbIns('fotos_despachos',{id:gid(),venta_id:editId,url:u});}
-        catch(e){console.error('Error foto desp edit:',e);}
+        try{
+          const u=await uploadFile(f,'desp_'+editId+'_'+Date.now());
+          if(u){
+            const reg={id:gid(),venta_id:editId,url:u};
+            await sbIns('fotos_despachos',reg);
+            f.isNew=false; f.url=u; delete f.preview;
+            fDesps.push(reg); nFotos++;
+          }
+        }catch(e){ errFotos++; console.error('Error foto desp edit:',e); }
       }
     }
+    if(errFotos>0) toast('⚠️ '+errFotos+' foto(s) no se pudieron subir','err');
 
     // Actualizar local
     const vi=ventas.findIndex(x=>x.id===editId);
     if(vi>=0) Object.assign(ventas[vi],upd);
     renderV(ventas);
-    toast('✓ Venta actualizada','ok');
+    toast(nFotos>0?('✓ Venta actualizada · '+nFotos+' foto(s) subida(s)'):'✓ Venta actualizada','ok');
     document.getElementById('ME').classList.remove('open');
 
     // Recargar en background
