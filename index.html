@@ -3017,11 +3017,12 @@ async function crearCotizacion(){
     var sub=0, desc=0;
     var dets=carrito.map(function(it){
       var pr=prods.find(function(p){return p.id===it.id;})||{};
-      var lista=parseFloat(pr.precio||it.precio||0);
+      var cant=parseFloat(it.qty||0);
+      var lista=parseFloat(it.precioBase||pr.precio||it.precio||0);
       var fin=parseFloat(it.precio||0);
-      var tot=fin*it.cant;
-      sub+=tot; desc+=Math.max(0,(lista-fin))*it.cant;
-      return {id:gid(),cotizacion_id:id,producto_id:it.id,cantidad:it.cant,
+      var tot=fin*cant;
+      sub+=tot; desc+=Math.max(0,(lista-fin))*cant;
+      return {id:gid(),cotizacion_id:id,producto_id:it.id,cantidad:cant,
               precio_lista:lista,precio_final:fin,total:tot};
     });
     var cab={id:id,numero:num,fecha:f,fecha_vencimiento:_sumaDias(f,COT_VALIDEZ_DIAS),
@@ -3164,6 +3165,16 @@ async function cotConvertir(){
 }
 
 
+// Muestra el código solo si es uno legible (PT031, KIT085, Kit00009090).
+// Los ids autogenerados (8 hex o gid) no le dicen nada al cliente.
+function _codProd(p){
+  if(p&&p.codigo) return String(p.codigo).toUpperCase().substring(0,11);
+  var c=String((p&&p.id)||'');
+  if(/^[0-9a-f]{8}$/.test(c)) return '';            // id de AppSheet
+  if(/^[a-z0-9]{10,13}$/.test(c)) return '';        // id generado por la app
+  return /^[A-Za-z]{2,4}[0-9]/.test(c) ? c.toUpperCase().substring(0,11) : '';
+}
+
 // ── PDF DE COTIZACIÓN (formato con logo y IGV desglosado) ──
 function cotPDF(silencioso){
   if(!cotActual) return null;
@@ -3228,7 +3239,7 @@ function cotPDF(silencioso){
     alt=!alt;
     doc.setFontSize(7);
     doc.text(String(parseFloat(d.cantidad||0)),19,y+4.5,{align:'right'});
-    doc.text(String(p.codigo||p.id||'').substring(0,10),30,y+4.5);
+    doc.text(_codProd(p),30,y+4.5);
     doc.text(nom,50,y+4.5);
     doc.text(parseFloat(d.precio_final||0).toFixed(2),158,y+4.5,{align:'right'});
     doc.text(parseFloat(d.total||0).toFixed(2),195,y+4.5,{align:'right'});
