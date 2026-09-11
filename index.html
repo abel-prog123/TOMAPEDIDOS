@@ -621,6 +621,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="tab" onclick="stockTab('recetas')" id="stab-recetas" style="white-space:nowrap;">Recetas</div>
     <div class="tab" onclick="stockTab('movimientos')" id="stab-movimientos" style="white-space:nowrap;">Movimientos</div>
     <div class="tab" onclick="stockTab('proveedores')" id="stab-proveedores" style="white-space:nowrap;">Proveedores</div>
+    <div class="tab" onclick="stockTab('op')" id="stab-op" style="white-space:nowrap;">🏭 OP</div>
     <div class="tab" onclick="stockTab('mrp')" id="stab-mrp" style="white-space:nowrap;">🧮 MRP</div>
     <div class="tab" onclick="stockTab('oc')" id="stab-oc" style="white-space:nowrap;">🧾 Compras</div>
   </div>
@@ -632,6 +633,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div id="stock-recetas" style="display:none"></div>
     <div id="stock-movimientos" style="display:none"></div>
     <div id="stock-proveedores" style="display:none"></div>
+    <div id="stock-op" style="display:none"></div>
     <div id="stock-mrp" style="display:none"></div>
     <div id="stock-oc" style="display:none"></div>
   </div>
@@ -985,7 +987,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div id="calcp-resultado"></div>
     <button onclick="confirmarProduccionProd()" id="btnCALCP"
       style="width:100%;padding:13px;background:var(--a);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.95rem;font-weight:800;cursor:pointer;margin-top:4px;display:none;">
-      ✅ Confirmar y descontar stock
+      🏭 Emitir orden de producción
     </button>
     <div style="height:8px"></div>
   </div>
@@ -1299,6 +1301,42 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 </div>
 
 <!-- MODAL EDITAR VENTA -->
+<div class="mo" id="MOP" onclick="if(event.target===this)cerrarOP()">
+  <div class="modal">
+    <div class="mh"></div>
+    <div style="position:absolute;top:14px;right:14px;z-index:5;">
+      <button onclick="cerrarOP()" style="width:34px;height:34px;border-radius:50%;border:1.5px solid var(--bdr);background:var(--card);color:var(--mu);font-size:1.05rem;font-weight:800;cursor:pointer;line-height:1;">&#10005;</button>
+    </div>
+    <div class="mtit" id="op-tit">Orden de produccion</div>
+    <div class="msub" id="op-sub"></div>
+    <div id="op-liq-info" style="display:none;margin-bottom:10px;"></div>
+
+    <div style="display:flex;gap:8px;">
+      <div class="fg" style="flex:1;"><label>Lote</label>
+        <input type="text" id="op-lote" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;font-weight:800;outline:none;box-sizing:border-box;">
+      </div>
+      <div class="fg" style="flex:1;"><label>Cantidad real</label>
+        <input type="number" step="any" id="op-real" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;font-weight:800;outline:none;box-sizing:border-box;">
+      </div>
+    </div>
+    <div class="fg"><label>Responsable</label>
+      <input type="text" id="op-resp" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;box-sizing:border-box;">
+    </div>
+    <div class="fg"><label>Observaciones / incidencias</label>
+      <textarea id="op-obs" rows="2" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.85rem;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
+    </div>
+
+    <div style="font-size:.8rem;font-weight:800;color:var(--mu);margin:14px 0 4px;">&#129514; INSUMOS &mdash; anota lo realmente usado</div>
+    <div id="op-dets"></div>
+
+    <button onclick="opPDF()" style="width:100%;padding:11px;background:var(--p);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.84rem;font-weight:800;cursor:pointer;margin-top:14px;">&#128196; Imprimir OP para planta</button>
+    <div id="op-acciones">
+      <button onclick="guardarOPCab()" style="width:100%;padding:11px;background:var(--card);color:var(--a);border:2px solid var(--a);border-radius:12px;font-family:inherit;font-size:.84rem;font-weight:800;cursor:pointer;margin-top:8px;">&#128190; Guardar avance</button>
+      <button onclick="liquidarOP()" id="op-btn-liq" style="width:100%;padding:13px;background:#16a34a;color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.88rem;font-weight:800;cursor:pointer;margin-top:8px;">&#9989; LIQUIDAR (mueve el stock)</button>
+      <button onclick="anularOP()" style="width:100%;padding:10px;background:#fee2e2;color:#b91c1c;border:none;border-radius:12px;font-family:inherit;font-size:.8rem;font-weight:800;cursor:pointer;margin-top:8px;">Anular OP</button>
+    </div>
+  </div>
+</div>
 <div class="mo" id="MCOT" onclick="if(event.target===this)cerrarCot()">
   <div class="modal">
     <div class="mh"></div>
@@ -1358,6 +1396,15 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     </div>
 
     <div class="sdiv">Datos generales</div>
+    <div class="fg" id="fg-e-vend"><label>Vendedor</label>
+      <select class="msel" id="e-vend">
+        <option value="MOISES">MOISES</option>
+        <option value="SONIA">SONIA</option>
+        <option value="CRISTIAN">CRISTIAN</option>
+        <option value="JHOSY">JHOSY</option>
+      </select>
+      <div style="font-size:.7rem;color:var(--mu);margin-top:4px;">Al cambiarlo se recalculan las comisiones y se regenera la nota de venta.</div>
+    </div>
     <div class="fg"><label>Estado de venta / pago</label>
       <select class="msel" id="e-est">
         <option value="PENDIENTE">PENDIENTE — falta cobrar</option>
@@ -1421,6 +1468,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <input type="file" id="fi-comp" accept="image/*,application/pdf" onchange="handleComprobante()" style="display:none">
     <div class="sdiv">📄 Documento PDF generado</div>
     <div id="e-doc"></div>
+    <button onclick="regenerarNotaManual()" style="width:100%;padding:9px;background:var(--card);color:var(--p);border:1.5px solid var(--p);border-radius:10px;font-family:inherit;font-size:.78rem;font-weight:800;cursor:pointer;margin-top:8px;">🔄 Regenerar nota de venta</button>
 
     <div style="display:flex;gap:8px;margin-top:12px;">
       <button class="mconf green" onclick="saveEdit()" id="btnE" style="flex:2;margin-top:0;">✓ GUARDAR CAMBIOS</button>
@@ -1545,6 +1593,7 @@ async function init(){
       sbGet('proveedores','?order=nombre'),
     ]);
     cargarCotizaciones().then(function(){ if(currentScreen==='cotiza') renderCotizaciones(); });
+    cargarOPs().then(function(){ if(document.getElementById('stab-op')&&document.getElementById('stab-op').classList.contains('active')) renderOPs(); });
 
     renderP(prods); renderC(clis); renderV(ventas);
     popCSel();
@@ -1574,6 +1623,7 @@ async function refresh(){
       sbGet('proveedores','?order=nombre'),
     ]);
     cargarCotizaciones().then(function(){ if(currentScreen==='cotiza') renderCotizaciones(); });
+    cargarOPs().then(function(){ if(document.getElementById('stab-op')&&document.getElementById('stab-op').classList.contains('active')) renderOPs(); });
 
     filterP(); filterC(); filterV();
     popCSel();
@@ -2153,6 +2203,13 @@ async function abrirE(vid){
   document.getElementById('e-fentrega').value=v.fecha_entrega||'';
   document.getElementById('e-fentregareal').value=v.fecha_entrega_real||'';
   document.getElementById('e-desp').value=v.estado_despacho||'PENDIENTE';
+  var _sv=document.getElementById('e-vend');
+  if(v.vendedor&&!Array.prototype.some.call(_sv.options,function(o){return o.value===v.vendedor;}))
+    _sv.insertAdjacentHTML('beforeend','<option value="'+v.vendedor+'">'+v.vendedor+'</option>');
+  _sv.value=v.vendedor||'';
+  // Solo el gerente reasigna vendedores
+  _sv.disabled=(sesion.rol!=='gerente');
+  document.getElementById('fg-e-vend').style.opacity=(sesion.rol==='gerente')?'1':'.6';
   document.getElementById('e-abm').value='';
   document.getElementById('e-abf').value=hoy();
 
@@ -2258,6 +2315,53 @@ function addAbono(){
 }
 function delAb(i){eAbonos[i]._del=true;renderAb();uPS();}
 
+
+// ── Regenerar la nota de venta cuando cambian datos de la venta ──
+// Reconstruye el mismo "snap" que usa buildPDF a partir de la base,
+// para que el PDF quede idéntico al original salvo lo que cambió.
+async function regenerarNota(vid,vendedorNuevo){
+  var v=ventas.find(function(x){return x.id===vid;});
+  if(!v) return null;
+  var dets=await sbGet('detalle_ventas','?venta_id=eq.'+encodeURIComponent(vid));
+  if(!dets.length) return null;
+  var snap=dets.map(function(d){
+    var p=prods.find(function(x){return x.id===d.producto_id;})||{};
+    return {id:d.producto_id, nombre:p.nombre||d.producto_id,
+            precioBase:parseFloat(d.precio_base||d.precio_final||0),
+            precio:parseFloat(d.precio_final||0),
+            qty:parseFloat(d.cantidad||0),
+            comision:parseFloat(p.comision||0)};
+  });
+  var cl=clis.find(function(c){return c.id===v.cliente_id;});
+  var nomC=cl?(cl.nombres||cl.alias||'Cliente'):'Cliente';
+  var rucC=cl?(cl.dni_ruc||''):'';
+  var f=pF(v.fecha||hoy());
+  var fecha=String(f.getDate()).padStart(2,'0')+'/'+String(f.getMonth()+1).padStart(2,'0')+'/'+f.getFullYear();
+  var blob=buildPDF(nomC,rucC,v.forma_pago||'',v.comprobante||'',
+                    vendedorNuevo||v.vendedor||'',v.observaciones||'',
+                    fecha,vid.substring(0,6).toUpperCase(),snap);
+  // Nombre nuevo para que el navegador y WhatsApp no sirvan la versión en caché
+  var url=await uploadFile(blob,'pdf_'+vid+'_'+Date.now());
+  if(url){
+    await sbUpd('ventas',vid,{documento_url:url});
+    v.documento_url=url;
+    var dEl=document.getElementById('e-doc');
+    if(dEl&&document.getElementById('ME').classList.contains('open'))
+      dEl.innerHTML='<a href="'+url+'" target="_blank" style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#eff6ff;border:1.5px solid var(--p);border-radius:10px;text-decoration:none;color:var(--p);font-weight:800;font-size:.85rem;">📄 Ver / Descargar PDF</a>';
+  }
+  return url;
+}
+
+async function regenerarNotaManual(){
+  if(!editId){ toast('Abre una venta primero','err'); return; }
+  if(!confirm('¿Regenerar la nota de venta con los datos actuales?\n\nSe reemplaza el PDF anterior. Si ya se lo enviaste al cliente, el enlace antiguo dejará de ser el vigente.')) return;
+  toast('Generando PDF...','ok');
+  try{
+    var u=await regenerarNota(editId,null);
+    toast(u?'✓ Nota regenerada':'No se pudo generar (¿la venta tiene productos?)',u?'ok':'err');
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
+
 async function saveEdit(){
   const btn=document.getElementById('btnE');
   btn.disabled=true; btn.textContent='⏳ Guardando...';
@@ -2295,7 +2399,32 @@ async function saveEdit(){
     }
     if(upd.estado==='COMPLETADO'&&!upd.fecha_pago_real&&!fpt) upd.fecha_pago_real=hoy();
 
+    // ── Cambio de vendedor: recalcula comisiones y regenera la nota ──
+    const _vSel=document.getElementById('e-vend');
+    const vendNuevo=_vSel&&!_vSel.disabled?_vSel.value:null;
+    const vendPrevio=ventaPrev.vendedor||'';
+    const cambioVend=vendNuevo&&vendNuevo!==vendPrevio;
+    if(cambioVend) upd.vendedor=vendNuevo;
+
     await sbUpd('ventas',editId,upd);
+
+    if(cambioVend){
+      try{
+        // Recalcular la comisión de cada línea con el nuevo vendedor
+        const dets=await sbGet('detalle_ventas','?venta_id=eq.'+encodeURIComponent(editId));
+        for(const d of dets){
+          const pr=prods.find(function(x){return x.id===d.producto_id;})||{};
+          const nueva=(typeof calcComision==='function')
+            ? calcComision(vendNuevo,parseFloat(d.precio_final||0),parseFloat(pr.costo||0)/1.18,parseFloat(d.cantidad||0))
+            : parseFloat(d.comision||0);
+          if(Math.abs((parseFloat(d.comision||0))-(nueva||0))>0.005)
+            await sbUpd('detalle_ventas',d.id,{comision:nueva||0});
+        }
+        await regenerarNota(editId,vendNuevo);
+        toast('✓ Vendedor cambiado a '+vendNuevo+' · comisiones y nota actualizadas','ok');
+      }catch(e){ console.error('Recalculo vendedor:',e); toast('⚠️ Vendedor cambiado, pero la nota no se pudo regenerar','err'); }
+    }
+
     // Descontar stock cuando el despacho pasa a ENTREGADO
     if(desp==='ENTREGADO'&&despAnterior!=='ENTREGADO'){
       await descontarStockVenta(editId);
@@ -3916,7 +4045,7 @@ async function exportComisionesPDF(){
 // ── STOCK ─────────────────────────────────────────────────
 function stockTab(t){
   // Ocultar todos primero
-  ['resumen','productos','graneles','materias','recetas','movimientos','proveedores','mrp','oc'].forEach(x=>{
+  ['resumen','productos','graneles','materias','recetas','movimientos','proveedores','op','mrp','oc'].forEach(x=>{
     const el=document.getElementById('stock-'+x);
     const tab=document.getElementById('stab-'+x);
     if(el){el.style.display='none';el.style.minHeight='';}
@@ -3936,6 +4065,7 @@ function stockTab(t){
   else if(t==='recetas') renderStockRecetas();
   else if(t==='movimientos') renderMovimientos();
   else if(t==='proveedores') renderProveedores();
+  else if(t==='op') renderOPs();
   else if(t==='mrp') renderMRP();
   else if(t==='oc') renderOC();
 }
@@ -5338,49 +5468,19 @@ function calcularProduccion(){
 }
 
 async function confirmarProduccion(){
-  const qty=parseFloat(document.getElementById('calc-qty').value)||0;
+  var qty=parseFloat(document.getElementById('calc-qty').value)||0;
   if(qty<=0) return;
-  const g=graneles.find(x=>x.id===calcGranelId);
-  const recs=recetasGranel.filter(r=>r.granel_id===calcGranelId);
-  const btn=document.getElementById('btnCALC');
-  btn.disabled=true;btn.textContent='⏳ Registrando...';
+  var btn=document.getElementById('btnCALC');
+  btn.disabled=true; btn.textContent='⏳ Emitiendo OP...';
   try{
-    const fecha=hoy();
-    const nota='Producción de '+qty+' '+(g?g.unidad||'LT':'LT')+' de '+(g?g.nombre:'granel');
-
-    // Descontar materias primas
-    for(var i=0;i<recs.length;i++){
-      var r=recs[i];
-      var mp=materias.find(function(m){return m.id===r.materia_prima_id;});
-      if(!mp) continue;
-      var necesario=r.cantidad*qty;
-      var nuevoStock=Math.max(0,parseFloat(mp.stock_actual||0)-necesario);
-      await sbUpd('materias_primas',mp.id,{stock_actual:nuevoStock});
-      mp.stock_actual=nuevoStock;
-      // Registrar movimiento
-      await sbIns('movimientos_stock',{
-        id:gid(),tipo:'SALIDA',referencia:'PRODUCCION',
-        materia_prima_id:mp.id,cantidad:necesario,nota,fecha
-      });
+    var op=await emitirOP('GRANEL',calcGranelId,qty);
+    if(op){
+      document.getElementById('MCALC').classList.remove('open');
+      goS('stock'); stockTab('op');
+      abrirOP(op.id);
     }
-
-    // Sumar al stock del granel
-    var stockGAnterior=parseFloat(g.stock_actual||0);
-    var nuevoStockG=stockGAnterior+qty;
-    await sbUpd('graneles',calcGranelId,{stock_actual:nuevoStockG});
-    g.stock_actual=nuevoStockG;
-    // Registrar entrada del granel
-    await sbIns('movimientos_stock',{
-      id:gid(),tipo:'ENTRADA',referencia:'PRODUCCION',
-      materia_prima_id:calcGranelId,cantidad:qty,nota,fecha
-    });
-
-    toast('✅ Producción registrada — stock actualizado','ok');
-    document.getElementById('MCALC').classList.remove('open');
-    renderStockGraneles();
-    renderStockMaterias();
-  }catch(e){toast('Error: '+e.message,'err');}
-  finally{btn.disabled=false;btn.textContent='✅ Confirmar producción y descontar stock';}
+  }catch(e){ toast('Error: '+e.message,'err'); }
+  finally{ btn.disabled=false; btn.textContent='🏭 Emitir orden de producción'; }
 }
 
 // ── 1. DESCUENTO AUTOMÁTICO AL CAMBIAR ESTADO A ENTREGADO ──
@@ -5544,48 +5644,382 @@ function calcularProduccionProd(){
 async function confirmarProduccionProd(){
   var qty=parseFloat(document.getElementById('calcp-qty').value)||0;
   if(qty<=0) return;
-  var p=prods.find(function(x){return x.id===calcProdId;});
-  var recs=recetas.filter(function(r){return r.producto_id===calcProdId;});
   var btn=document.getElementById('btnCALCP');
-  btn.disabled=true;btn.textContent='⏳ Registrando...';
+  btn.disabled=true; btn.textContent='⏳ Emitiendo OP...';
   try{
-    var fecha=hoy();
-    var nota='Producción de '+qty+' '+(p?p.unidad||'UND':'UND')+' de '+(p?p.nombre:'producto');
-    // Descontar insumos
-    for(var i=0;i<recs.length;i++){
-      var r=recs[i];
-      var necesario=r.cantidad*qty;
+    var op=await emitirOP('ENVASADO',calcProdId,qty);
+    if(op){
+      document.getElementById('MCALCP').classList.remove('open');
+      goS('stock'); stockTab('op');
+      abrirOP(op.id);
+    }
+  }catch(e){ toast('Error: '+e.message,'err'); }
+  finally{ btn.disabled=false; btn.textContent='🏭 Emitir orden de producción'; }
+}
+
+
+// ══════════════════════════════════════════════════════════
+//  ÓRDENES DE PRODUCCIÓN (OP) con lote
+//  Emitir -> imprimir -> liquidar con cantidades REALES.
+//  El stock se mueve SOLO al liquidar.
+// ══════════════════════════════════════════════════════════
+var ops=[], detOps=[], opActual=null, opDets=[];
+
+async function cargarOPs(){
+  try{
+    var r=await Promise.all([sbGet('ordenes_produccion','?order=created_at.desc'),sbGet('detalle_op')]);
+    ops=r[0]; detOps=r[1];
+  }catch(e){ ops=[]; detOps=[]; console.error('OPs:',e); }
+}
+function opNumero(){
+  var anio=hoy().substring(0,4), n=0;
+  ops.forEach(function(o){
+    var m=(o.numero||'').match(/^OP-(\d{4})-(\d+)$/);
+    if(m&&m[1]===anio){ var v=parseInt(m[2],10); if(v>n) n=v; }
+  });
+  return 'OP-'+anio+'-'+String(n+1).padStart(3,'0');
+}
+// Lote sugerido: AAMMDD-NN  (NN = correlativo del día)
+function loteSugerido(){
+  var f=hoy(), corto=f.substring(2,4)+f.substring(5,7)+f.substring(8,10);
+  var n=ops.filter(function(o){return (o.lote||'').indexOf(corto+'-')===0;}).length;
+  return corto+'-'+String(n+1).padStart(2,'0');
+}
+// Cuánto material está comprometido por OPs abiertas (no descontado aún)
+function comprometido(tipo,id){
+  var abiertas=ops.filter(function(o){return o.estado==='EMITIDA';}).map(function(o){return o.id;});
+  return detOps.filter(function(d){
+    return abiertas.indexOf(d.op_id)>=0 && (tipo==='granel'?d.granel_id===id:d.materia_prima_id===id);
+  }).reduce(function(s,d){return s+parseFloat(d.cant_teorica||0);},0);
+}
+
+// ── Emitir OP (desde el modal de producir, granel o producto) ──
+async function emitirOP(tipo,destinoId,cantidad){
+  if(!(cantidad>0)){ toast('Indica una cantidad válida','err'); return null; }
+  var comps=[], destNom='', unidad='';
+  if(tipo==='GRANEL'){
+    var g=graneles.find(function(x){return x.id===destinoId;});
+    if(!g) return null;
+    destNom=g.nombre; unidad=g.unidad||'LT';
+    recetasGranel.filter(function(r){return r.granel_id===destinoId;}).forEach(function(r){
+      var m=materias.find(function(x){return x.id===r.materia_prima_id;})||{};
+      comps.push({materia_prima_id:r.materia_prima_id,granel_id:null,
+        nombre:m.nombre||r.materia_prima_id,unidad:m.unidad||'',
+        cant_teorica:parseFloat(r.cantidad||0)*cantidad,
+        costo_unitario:parseFloat(m.costo_unitario||0)});
+    });
+  } else {
+    var p=prods.find(function(x){return x.id===destinoId;});
+    if(!p) return null;
+    destNom=p.nombre; unidad=p.unidad||'UND';
+    recetas.filter(function(r){return r.producto_id===destinoId;}).forEach(function(r){
       if(r.granel_id){
-        var g=graneles.find(function(x){return x.id===r.granel_id;});
+        var g2=graneles.find(function(x){return x.id===r.granel_id;})||{};
+        comps.push({materia_prima_id:null,granel_id:r.granel_id,
+          nombre:g2.nombre||r.granel_id,unidad:g2.unidad||'LT',
+          cant_teorica:parseFloat(r.cantidad||0)*cantidad,
+          costo_unitario:parseFloat(g2.costo_unitario||0)});
+      } else {
+        var m2=materias.find(function(x){return x.id===r.materia_prima_id;})||{};
+        comps.push({materia_prima_id:r.materia_prima_id,granel_id:null,
+          nombre:m2.nombre||r.materia_prima_id,unidad:m2.unidad||'',
+          cant_teorica:parseFloat(r.cantidad||0)*cantidad,
+          costo_unitario:parseFloat(m2.costo_unitario||0)});
+      }
+    });
+  }
+  if(!comps.length){ toast('No hay receta definida','err'); return null; }
+  try{
+    var id=gid(), num=opNumero();
+    var cab={id:id,numero:num,tipo:tipo,fecha:hoy(),estado:'EMITIDA',
+      producto_id:tipo==='ENVASADO'?destinoId:null,
+      granel_id:tipo==='GRANEL'?destinoId:null,
+      destino_nombre:destNom,unidad:unidad,
+      cant_planificada:cantidad,cant_real:null,
+      lote:loteSugerido(),responsable:sesion.vendedor||'',observaciones:''};
+    await sbIns('ordenes_produccion',cab);
+    var dts=comps.map(function(c){ c.id=gid(); c.op_id=id; c.cant_real=null; c.lote_insumo=null; return c; });
+    for(var i=0;i<dts.length;i++) await sbIns('detalle_op',dts[i]);
+    ops.unshift(cab); detOps=detOps.concat(dts);
+    toast('✓ '+num+' emitida · lote '+cab.lote,'ok');
+    return cab;
+  }catch(e){ toast('Error: '+e.message,'err'); return null; }
+}
+
+// ── Listado ──
+function renderOPs(){
+  var el=document.getElementById('stock-op'); if(!el) return;
+  var f=document.getElementById('op-filtro')?document.getElementById('op-filtro').value:'EMITIDA';
+  var arr=ops.filter(function(o){ return !f||o.estado===f; });
+  var abiertas=ops.filter(function(o){return o.estado==='EMITIDA';}).length;
+  var h='<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">'
+    +'<div style="flex:1;font-size:.8rem;font-weight:800;color:var(--mu);">🏭 '+abiertas+' OP abierta'+(abiertas===1?'':'s')+'</div>'
+    +'<select id="op-filtro" onchange="renderOPs()" style="padding:8px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.78rem;background:var(--card);">'
+    +['EMITIDA','LIQUIDADA','ANULADA',''].map(function(v){
+        return '<option value="'+v+'"'+(v===f?' selected':'')+'>'+(v||'Todas')+'</option>';}).join('')
+    +'</select></div>';
+  if(!arr.length){
+    h+='<div class="empty"><p>No hay órdenes.<br>Se crean desde 🏭 Producir en Productos o Graneles.</p></div>';
+  } else {
+    h+=arr.map(function(o){
+      var col=o.estado==='EMITIDA'?['#fef3c7','#92400e']:(o.estado==='LIQUIDADA'?['#dcfce7','#166534']:['#fee2e2','#b91c1c']);
+      var rend='';
+      if(o.estado==='LIQUIDADA'&&o.cant_real!=null&&o.cant_planificada>0){
+        var pc=(parseFloat(o.cant_real)/parseFloat(o.cant_planificada)*100);
+        rend='<span style="font-size:.68rem;font-weight:800;color:'+(pc<97?'#b45309':'#166534')+';"> · rend. '+pc.toFixed(1)+'%</span>';
+      }
+      return '<div class="desp-card" onclick="abrirOP(\''+o.id+'\')" style="cursor:pointer;">'
+        +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">'
+        +'<div><div style="font-size:.72rem;font-weight:800;color:var(--p);">'+(o.numero||'')+' · '+o.tipo+'</div>'
+        +'<div class="desp-cli">'+(o.destino_nombre||'')+'</div></div>'
+        +'<span style="font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:6px;background:'+col[0]+';color:'+col[1]+';flex-shrink:0;">'+o.estado+'</span></div>'
+        +'<div class="desp-prods">Lote '+(o.lote||'—')+' · plan '+parseFloat(o.cant_planificada||0)+' '+(o.unidad||'')
+        +(o.cant_real!=null?(' · real '+parseFloat(o.cant_real)+' '+(o.unidad||'')):'')+rend+'</div>'
+        +'<div class="desp-meta"><span class="desp-fecha">📅 '+(o.fecha||'')+'</span>'
+        +'<span style="font-size:.72rem;color:var(--mu);">'+(o.responsable||'')+'</span></div></div>';
+    }).join('');
+  }
+  el.innerHTML=h;
+}
+
+
+// ── Abrir OP / liquidar ──
+function abrirOP(id){
+  var o=ops.find(function(x){return x.id===id;}); if(!o) return;
+  opActual=o;
+  opDets=detOps.filter(function(d){return d.op_id===id;}).map(function(d){return Object.assign({},d);});
+  var liq=o.estado==='LIQUIDADA';
+  document.getElementById('op-tit').textContent=(o.numero||'')+' · '+o.tipo;
+  document.getElementById('op-sub').textContent=(o.destino_nombre||'')+' · plan '+parseFloat(o.cant_planificada||0)+' '+(o.unidad||'');
+  document.getElementById('op-lote').value=o.lote||'';
+  document.getElementById('op-resp').value=o.responsable||'';
+  document.getElementById('op-obs').value=o.observaciones||'';
+  document.getElementById('op-real').value=o.cant_real!=null?o.cant_real:o.cant_planificada;
+  ['op-lote','op-resp','op-obs','op-real'].forEach(function(x){document.getElementById(x).disabled=liq;});
+  document.getElementById('op-acciones').style.display=liq?'none':'block';
+  document.getElementById('op-liq-info').style.display=liq?'block':'none';
+  if(liq) document.getElementById('op-liq-info').innerHTML=
+    '<div style="background:#dcfce7;color:#166534;border-radius:10px;padding:10px;font-size:.78rem;font-weight:700;">'
+    +'✓ Liquidada el '+(o.fecha_liquidacion||'')+(o.liquidado_por?' por '+o.liquidado_por:'')+'</div>';
+  opRenderDets(liq);
+  document.getElementById('MOP').classList.add('open');
+}
+function cerrarOP(){ document.getElementById('MOP').classList.remove('open'); opActual=null; }
+
+function opRenderDets(soloLectura){
+  var el=document.getElementById('op-dets');
+  el.innerHTML=opDets.map(function(d,i){
+    var real=d.cant_real!=null?d.cant_real:d.cant_teorica;
+    var dif=parseFloat(real||0)-parseFloat(d.cant_teorica||0);
+    var avi=Math.abs(dif)>0.0001?('<span style="color:'+(dif>0?'#b91c1c':'#b45309')+';font-weight:800;"> ('+(dif>0?'+':'')+dif.toFixed(3)+')</span>'):'';
+    var disp=null;
+    if(d.granel_id){ var gg=graneles.find(function(x){return x.id===d.granel_id;}); if(gg) disp=parseFloat(gg.stock_actual||0); }
+    else if(d.materia_prima_id){ var mm=materias.find(function(x){return x.id===d.materia_prima_id;}); if(mm) disp=parseFloat(mm.stock_actual||0); }
+    var comp=comprometido(d.granel_id?'granel':'materia',d.granel_id||d.materia_prima_id);
+    var libre=disp!=null?(disp-comp+parseFloat(d.cant_teorica||0)):null;
+    var falta=(libre!=null&&libre<parseFloat(d.cant_teorica||0))
+      ? '<div style="font-size:.68rem;color:#b91c1c;font-weight:800;margin-top:3px;">⚠️ Stock insuficiente: quedan '+libre.toFixed(2)+' '+(d.unidad||'')+' libres</div>' : '';
+    return '<div style="padding:9px 0;border-bottom:1px solid var(--bdr);">'
+      +'<div style="font-size:.82rem;font-weight:700;">'+d.nombre+'</div>'+falta
+      +'<div style="display:flex;gap:8px;align-items:center;margin-top:5px;flex-wrap:wrap;">'
+      +'<span style="font-size:.72rem;color:var(--mu);white-space:nowrap;">Teórico '+parseFloat(d.cant_teorica||0).toFixed(3)+' '+(d.unidad||'')+'</span>'
+      +'<input type="number" step="any" value="'+real+'" '+(soloLectura?'disabled':'')
+      +' oninput="opSetReal('+i+',this.value)" style="width:92px;padding:6px 8px;border:1.5px solid var(--bdr);border-radius:8px;font-family:inherit;font-size:.8rem;">'
+      +'<input type="text" placeholder="Lote insumo" value="'+(d.lote_insumo||'')+'" '+(soloLectura?'disabled':'')
+      +' oninput="opSetLote('+i+',this.value)" style="flex:1;min-width:110px;padding:6px 8px;border:1.5px solid var(--bdr);border-radius:8px;font-family:inherit;font-size:.78rem;">'
+      +avi+'</div></div>';
+  }).join('');
+}
+function opSetReal(i,v){ opDets[i].cant_real=parseFloat(v)||0; }
+function opSetLote(i,v){ opDets[i].lote_insumo=v; }
+
+// ── LIQUIDAR: único momento en que se mueve el stock ──
+async function liquidarOP(){
+  if(!opActual) return;
+  var real=parseFloat(document.getElementById('op-real').value)||0;
+  if(real<=0){ toast('Indica la cantidad realmente producida','err'); return; }
+  var lote=(document.getElementById('op-lote').value||'').trim();
+  if(!lote){ toast('El lote es obligatorio','err'); return; }
+  var plan=parseFloat(opActual.cant_planificada||0);
+  var rend=plan>0?(real/plan*100):100;
+  var msg='Liquidar '+(opActual.numero||'')+'\n\n'
+    +'Planificado: '+plan+' '+(opActual.unidad||'')+'\n'
+    +'Real: '+real+' '+(opActual.unidad||'')+'\n'
+    +'Rendimiento: '+rend.toFixed(1)+'%\n'
+    +'Lote: '+lote+'\n\n'
+    +'Se descontarán los insumos y se sumará el producto al stock.\nEsta acción no se puede deshacer.';
+  if(!confirm(msg)) return;
+  var btn=document.getElementById('op-btn-liq'); btn.disabled=true; btn.textContent='⏳ Liquidando...';
+  try{
+    var f=hoy(), ref='OP '+(opActual.numero||''), quien=sesion.vendedor||'';
+    // 1) Descontar componentes con la cantidad REAL
+    for(var i=0;i<opDets.length;i++){
+      var d=opDets[i];
+      var usado=d.cant_real!=null?parseFloat(d.cant_real):parseFloat(d.cant_teorica||0);
+      if(!(usado>0)) continue;
+      if(d.granel_id){
+        var g=graneles.find(function(x){return x.id===d.granel_id;});
         if(g){
-          var nuevoStockG=Math.max(0,parseFloat(g.stock_actual||0)-necesario);
-          await sbUpd('graneles',r.granel_id,{stock_actual:nuevoStockG});
-          g.stock_actual=nuevoStockG;
-          await sbIns('movimientos_stock',{id:gid(),tipo:'SALIDA',referencia:'PRODUCCION',materia_prima_id:r.granel_id,cantidad:necesario,nota,fecha});
+          var ng=Math.max(0,parseFloat(g.stock_actual||0)-usado);
+          await sbUpd('graneles',d.granel_id,{stock_actual:ng}); g.stock_actual=ng;
+          await sbIns('movimientos_stock',{id:gid(),tipo:'SALIDA',referencia:ref,
+            materia_prima_id:d.granel_id,cantidad:usado,nota:'Consumo '+ref,fecha:f,lote:d.lote_insumo||null,op_id:opActual.id});
         }
-      } else if(r.materia_prima_id){
-        var mp=materias.find(function(m){return m.id===r.materia_prima_id;});
-        if(mp){
-          var nuevoStockM=Math.max(0,parseFloat(mp.stock_actual||0)-necesario);
-          await sbUpd('materias_primas',r.materia_prima_id,{stock_actual:nuevoStockM});
-          mp.stock_actual=nuevoStockM;
-          await sbIns('movimientos_stock',{id:gid(),tipo:'SALIDA',referencia:'PRODUCCION',materia_prima_id:r.materia_prima_id,cantidad:necesario,nota,fecha});
+      } else if(d.materia_prima_id){
+        var m=materias.find(function(x){return x.id===d.materia_prima_id;});
+        if(m){
+          var nm=Math.max(0,parseFloat(m.stock_actual||0)-usado);
+          await sbUpd('materias_primas',d.materia_prima_id,{stock_actual:nm}); m.stock_actual=nm;
+          await sbIns('movimientos_stock',{id:gid(),tipo:'SALIDA',referencia:ref,
+            materia_prima_id:d.materia_prima_id,cantidad:usado,nota:'Consumo '+ref,fecha:f,lote:d.lote_insumo||null,op_id:opActual.id});
+        }
+      }
+      await sbUpd('detalle_op',d.id,{cant_real:usado,lote_insumo:d.lote_insumo||null});
+    }
+    // 2) Ingresar lo producido
+    if(opActual.tipo==='GRANEL'){
+      var gd=graneles.find(function(x){return x.id===opActual.granel_id;});
+      if(gd){
+        var ngd=parseFloat(gd.stock_actual||0)+real;
+        await sbUpd('graneles',opActual.granel_id,{stock_actual:ngd}); gd.stock_actual=ngd;
+        await sbIns('movimientos_stock',{id:gid(),tipo:'ENTRADA',referencia:ref,
+          materia_prima_id:opActual.granel_id,cantidad:real,nota:'Producción '+ref,fecha:f,lote:lote,op_id:opActual.id});
+      }
+    } else {
+      var pd=prods.find(function(x){return x.id===opActual.producto_id;});
+      if(pd){
+        var npd=parseFloat(pd.stock_actual||0)+real;
+        await sbUpd('productos',opActual.producto_id,{stock_actual:npd}); pd.stock_actual=npd;
+        await sbIns('movimientos_stock',{id:gid(),tipo:'ENTRADA',referencia:ref,
+          producto_id:opActual.producto_id,cantidad:real,nota:'Producción '+ref,fecha:f,lote:lote,op_id:opActual.id});
+        if(typeof calcularCostoProducto==='function'){
+          var c=calcularCostoProducto(pd.id);
+          if(c>0){ await sbUpd('productos',pd.id,{costo:c}); pd.costo=c; }
         }
       }
     }
-    // Sumar al stock del producto
-    var nuevoStockP=(parseFloat(p.stock_actual||0))+qty;
-    await sbUpd('productos',p.id,{stock_actual:nuevoStockP});
-    p.stock_actual=nuevoStockP;
-    await sbIns('movimientos_stock',{id:gid(),tipo:'ENTRADA',referencia:'PRODUCCION',producto_id:p.id,cantidad:qty,nota,fecha});
-    // Actualizar costo
-    var costo=calcularCostoProducto(p.id);
-    if(costo>0){await sbUpd('productos',p.id,{costo});p.costo=costo;}
-    toast('✅ Producción registrada','ok');
-    document.getElementById('MCALCP').classList.remove('open');
-    renderStockProds();
-  }catch(e){toast('Error: '+e.message,'err');}
-  finally{btn.disabled=false;btn.textContent='✅ Confirmar y descontar stock';}
+    // 3) Cerrar la OP
+    var upd={estado:'LIQUIDADA',cant_real:real,lote:lote,
+      responsable:document.getElementById('op-resp').value,
+      observaciones:document.getElementById('op-obs').value,
+      fecha_liquidacion:f,liquidado_por:quien};
+    await sbUpd('ordenes_produccion',opActual.id,upd);
+    Object.assign(opActual,upd);
+    detOps=detOps.filter(function(d){return d.op_id!==opActual.id;}).concat(opDets);
+    renderOPs(); renderStockProds();
+    if(typeof renderStockGraneles==='function') renderStockGraneles();
+    if(typeof renderStockMaterias==='function') renderStockMaterias();
+    toast('✅ '+(opActual.numero||'')+' liquidada · rend. '+rend.toFixed(1)+'%','ok');
+    cerrarOP();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+  finally{ btn.disabled=false; btn.textContent='✅ LIQUIDAR (mueve el stock)'; }
+}
+
+async function anularOP(){
+  if(!opActual) return;
+  if(opActual.estado==='LIQUIDADA'){ alert('Ya fue liquidada. No se puede anular.'); return; }
+  if(!confirm('¿Anular '+(opActual.numero||'')+'?\nNo se mueve stock porque aún no se liquidó.')) return;
+  try{
+    await sbUpd('ordenes_produccion',opActual.id,{estado:'ANULADA'});
+    opActual.estado='ANULADA';
+    cerrarOP(); renderOPs();
+    toast('OP anulada','ok');
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
+async function guardarOPCab(){
+  if(!opActual||opActual.estado==='LIQUIDADA') return;
+  try{
+    var upd={lote:(document.getElementById('op-lote').value||'').trim(),
+             responsable:document.getElementById('op-resp').value,
+             observaciones:document.getElementById('op-obs').value};
+    await sbUpd('ordenes_produccion',opActual.id,upd);
+    Object.assign(opActual,upd);
+    for(var i=0;i<opDets.length;i++)
+      await sbUpd('detalle_op',opDets[i].id,{cant_real:opDets[i].cant_real,lote_insumo:opDets[i].lote_insumo||null});
+    detOps=detOps.filter(function(d){return d.op_id!==opActual.id;}).concat(opDets);
+    renderOPs(); toast('✓ Avance guardado','ok');
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
+
+
+// ── PDF de la OP para llevar a planta ──
+function opPDF(){
+  if(!opActual) return;
+  var jsPDF=window.jspdf.jsPDF;
+  var doc=new jsPDF({unit:'mm',format:'a4'});
+  var N=[23,42,84];
+  var o=opActual;
+  try{ doc.addImage(LOGO_B64,'JPEG',12,10,44,12.7); }catch(e){}
+  doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(N[0],N[1],N[2]);
+  doc.text('ORDEN DE PRODUCCIÓN',105,17,{align:'center'});
+  doc.setFillColor(N[0],N[1],N[2]);doc.rect(150,10,48,16,'F');
+  doc.setFontSize(11);doc.setTextColor(255,255,255);doc.text(o.numero||'',174,17,{align:'center'});
+  doc.setFontSize(7);doc.text(o.tipo||'',174,22.5,{align:'center'});
+
+  doc.setDrawColor(190,195,205);doc.setLineWidth(.3);doc.rect(12,30,186,22);
+  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(N[0],N[1],N[2]);
+  doc.text('PRODUCTO',16,36); doc.text('CANT. PLANIFICADA',110,36); doc.text('LOTE',160,36);
+  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(20,20,20);
+  doc.text(doc.splitTextToSize(o.destino_nombre||'',92),16,42);
+  doc.text(parseFloat(o.cant_planificada||0)+' '+(o.unidad||''),110,42);
+  doc.setFont('helvetica','bold');doc.text(o.lote||'',160,42);
+  doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(70,70,70);
+  doc.text('Fecha: '+(o.fecha||''),16,48.5);
+  doc.text('Responsable: '+(o.responsable||'____________________'),70,48.5);
+
+  // Tabla de insumos con columnas en blanco para llenar a mano
+  var y=58;
+  doc.setFillColor(N[0],N[1],N[2]);doc.rect(12,y,186,7,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(255,255,255);
+  doc.text('INSUMO / COMPONENTE',16,y+4.7);
+  doc.text('TEÓRICO',110,y+4.7,{align:'right'});
+  doc.text('UND',120,y+4.7);
+  doc.text('REAL USADO',152,y+4.7,{align:'center'});
+  doc.text('LOTE INSUMO',182,y+4.7,{align:'center'});
+  y+=7;
+  doc.setFont('helvetica','normal');doc.setTextColor(30,30,30);
+  var dets=detOps.filter(function(d){return d.op_id===o.id;});
+  dets.forEach(function(d,i){
+    var alto=9;
+    if(y+alto>250){ doc.addPage(); y=20; }
+    if(i%2){ doc.setFillColor(246,248,251); doc.rect(12,y,186,alto,'F'); }
+    doc.setFontSize(7.5);
+    doc.text(doc.splitTextToSize(d.nombre||'',90),16,y+5.8);
+    doc.setFont('helvetica','bold');
+    doc.text(parseFloat(d.cant_teorica||0).toFixed(3),110,y+5.8,{align:'right'});
+    doc.setFont('helvetica','normal');
+    doc.text(d.unidad||'',120,y+5.8);
+    // casillas en blanco
+    doc.setDrawColor(150,155,165);
+    doc.rect(132,y+1.5,40,6); doc.rect(174,y+1.5,24,6);
+    y+=alto;
+  });
+
+  y+=8;
+  if(y>235){ doc.addPage(); y=20; }
+  doc.setDrawColor(190,195,205);doc.rect(12,y,186,26);
+  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(N[0],N[1],N[2]);
+  doc.text('CIERRE DE PRODUCCIÓN',16,y+6);
+  doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(50,50,50);
+  doc.text('Cantidad realmente producida:',16,y+14);
+  doc.setDrawColor(150,155,165);doc.rect(80,y+9.5,40,6);
+  doc.text(o.unidad||'',122,y+14);
+  doc.text('Hora inicio:',134,y+14); doc.rect(158,y+9.5,20,6);
+  doc.text('Hora fin:',134,y+21); doc.rect(158,y+16.5,20,6);
+  doc.text('Observaciones / incidencias:',16,y+21);
+  doc.rect(70,y+16.5,60,6);
+  y+=32;
+
+  if(y>250){ doc.addPage(); y=30; }
+  doc.setDrawColor(120,120,120);
+  doc.line(20,y+12,80,y+12); doc.line(120,y+12,180,y+12);
+  doc.setFontSize(7);doc.setTextColor(90,90,90);
+  doc.text('Produjo',50,y+16,{align:'center'});
+  doc.text('Verificó / Calidad',150,y+16,{align:'center'});
+
+  doc.setFontSize(6.5);doc.setTextColor(140,140,140);
+  doc.text('Anotar el lote de cada insumo es obligatorio para la trazabilidad.  ·  '+EMPRESA.nombre,105,288,{align:'center'});
+  doc.save((o.numero||'OP')+'.pdf');
 }
 
 // ── RESUMEN DE STOCK / VALORIZACIÓN ──────────────────────
