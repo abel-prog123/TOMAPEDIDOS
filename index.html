@@ -3453,6 +3453,7 @@ async function renderDespachos(){
       <div style="font-size:.82rem;font-weight:800;color:var(--mu);">📦 ${activas.length} pedido${activas.length>1?'s':''} pendiente${activas.length>1?'s':''}</div>
       <button onclick="exportDespachos()" style="padding:6px 12px;background:var(--a);color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">📄 PDF</button>
       <button onclick="exportDespachosExcel()" style="padding:6px 12px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;margin-left:6px;">📊 Excel</button>
+      <button onclick="exportAnalisisDespachos()" style="padding:6px 12px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;margin-left:6px;">📈 Análisis</button>
     </div>`;
 
     activas.forEach(v=>{
@@ -3490,6 +3491,125 @@ async function renderDespachos(){
     });
     el.innerHTML=html;
   }catch(e){el.innerHTML=`<div class="empty"><p>Error: ${e.message}</p></div>`;}
+}
+
+
+// ── EXCEL DE ANÁLISIS DE DESPACHOS ────────────────────────
+// Distinto al operativo: incluye TODO el histórico y separa
+// el dato real del que se rellenó en la migración.
+async function exportAnalisisDespachos(){
+  toast('Preparando análisis...','ok');
+  try{
+    var allDets=await sbGet('detalle_ventas');
+    _ensureXLSX(function(){
+      try{
+        var CORTE='2026-09-01';  // desde aquí el dato de entrega es real
+        var hoyStr=hoy();
+        var arr=ventas.filter(function(v){return v.estado!=='ANULADO';});
+        arr.sort(function(a,b){ return (a.fecha||'')<(b.fecha||'')?1:-1; });
+
+        var filas=[['Nº venta','Fecha pedido','Mes','Cliente','Vendedor','Estado despacho',
+                    'F. entrega estimada','F. entrega real','Desviación (días)','Cumplimiento',
+                    'Lead time (días)','Nº productos','Total S/','Estado pago','Origen del dato']];
+        var reales=[];
+        arr.forEach(function(v){
+          var c=clis.find(function(x){return x.id===v.cliente_id;});
+          var nom=c?(c.nombres||c.alias||v.cliente_id):(v.cliente_id||'Sin cliente');
+          var fest=v.fecha_entrega||'', freal=v.fecha_entrega_real||'';
+          var esReal=(v.fecha||'')>=CORTE;
+          var dev='', cumpl='', lead='';
+          if(fest&&freal){
+            dev=Math.round((pF(freal)-pF(fest))/86400000);
+            cumpl=dev>0?'TARDE':(dev<0?'ANTES':'A TIEMPO');
+          } else if(fest&&!freal){
+            var d2=Math.round((pF(hoyStr)-pF(fest))/86400000);
+            cumpl=d2>0?'PENDIENTE ATRASADO':'PENDIENTE';
+            dev=d2>0?d2:'';
+          } else { cumpl='SIN FECHA'; }
+          if(v.fecha&&freal) lead=Math.round((pF(freal)-pF(v.fecha))/86400000);
+          var nd=allDets.filter(function(d){return d.venta_id===v.id;}).length;
+          var tot=parseFloat(v.total||0), ab=getAb(v.id);
+          var fila=[v.id,v.fecha||'',(v.fecha||'').substring(0,7),nom,v.vendedor||'',
+                    v.estado_despacho||'PENDIENTE',fest,freal,dev,cumpl,lead,nd,_r4(tot),
+                    getPS(tot,ab).toUpperCase(),
+                    esReal?'Real':'Migrado — fecha rellenada'];
+          filas.push(fila);
+          if(esReal&&fest&&freal) reales.push({dev:dev,vend:v.vendedor||'—',mes:(v.fecha||'').substring(0,7),cli:nom,tot:tot});
+        });
+
+        // ── Resumen ──
+        var res=[['ANÁLISIS DE CUMPLIMIENTO DE ENTREGAS',''],['','']];
+        res.push(['⚠️ IMPORTANTE','']);
+        res.push(['Las ventas anteriores al '+CORTE+' se migraron desde AppSheet','']);
+        res.push(['con la fecha real igualada a la estimada. NO sirven para medir','']);
+        res.push(['cumplimiento: darían siempre 0 días de desviación.','']);
+        res.push(['El análisis de abajo usa SOLO las entregas con dato real.','']);
+        res.push(['','']);
+        res.push(['Ventas totales (sin anuladas)',arr.length]);
+        res.push(['Con dato de entrega real',reales.length]);
+        res.push(['','']);
+        if(reales.length){
+          var tarde=reales.filter(function(r){return r.dev>0;});
+          var atiempo=reales.filter(function(r){return r.dev<=0;});
+          var sumDev=reales.reduce(function(s,r){return s+r.dev;},0);
+          var maxDev=reales.reduce(function(m,r){return Math.max(m,r.dev);},0);
+          res.push(['Entregas a tiempo o antes',atiempo.length]);
+          res.push(['Entregas tarde',tarde.length]);
+          res.push(['% de cumplimiento',_r4(atiempo.length/reales.length*100)+'%']);
+          res.push(['Desviación promedio (días)',_r4(sumDev/reales.length)]);
+          res.push(['Atraso máximo (días)',maxDev]);
+          res.push(['Monto entregado tarde (S/)',_r4(tarde.reduce(function(s,r){return s+r.tot;},0))]);
+        } else {
+          res.push(['Aún no hay entregas con dato real.','']);
+          res.push(['Los indicadores aparecerán cuando registres','']);
+          res.push(['fechas de entrega real en la app.','']);
+        }
+        var pend=arr.filter(function(v){return (v.estado_despacho||'PENDIENTE')!=='ENTREGADO';});
+        var atras=pend.filter(function(v){return v.fecha_entrega&&v.fecha_entrega<hoyStr;});
+        res.push(['','']);
+        res.push(['SITUACIÓN ACTUAL','']);
+        res.push(['Despachos pendientes',pend.length]);
+        res.push(['De ellos, ya atrasados',atras.length]);
+        res.push(['Monto pendiente de despacho (S/)',_r4(pend.reduce(function(s,v){return s+parseFloat(v.total||0);},0))]);
+
+        // ── Agrupaciones (solo dato real) ──
+        function agrupar(campo,titulo){
+          var m={};
+          reales.forEach(function(r){
+            var k=r[campo]||'—';
+            if(!m[k]) m[k]={n:0,tarde:0,dev:0,monto:0};
+            m[k].n++; m[k].dev+=r.dev; m[k].monto+=r.tot;
+            if(r.dev>0) m[k].tarde++;
+          });
+          var out=[[titulo,'Entregas','A tiempo','Tarde','% cumplim.','Desv. prom. (días)','Monto S/']];
+          Object.keys(m).sort().forEach(function(k){
+            var x=m[k];
+            out.push([k,x.n,x.n-x.tarde,x.tarde,_r4((x.n-x.tarde)/x.n*100)+'%',_r4(x.dev/x.n),_r4(x.monto)]);
+          });
+          if(out.length===1) out.push(['(sin datos reales todavía)','','','','','','']);
+          return out;
+        }
+
+        var wb=XLSX.utils.book_new();
+        var w0=XLSX.utils.aoa_to_sheet(res); w0['!cols']=[{wch:46},{wch:18}];
+        XLSX.utils.book_append_sheet(wb,w0,'Resumen');
+        var w1=XLSX.utils.aoa_to_sheet(filas);
+        w1['!cols']=[{wch:12},{wch:13},{wch:9},{wch:32},{wch:11},{wch:16},{wch:19},{wch:16},
+                     {wch:16},{wch:19},{wch:15},{wch:12},{wch:11},{wch:13},{wch:26}];
+        w1['!autofilter']={ref:'A1:O1'}; w1['!freeze']={xSplit:0,ySplit:1};
+        XLSX.utils.book_append_sheet(wb,w1,'Datos');
+        var w2=XLSX.utils.aoa_to_sheet(agrupar('vend','Vendedor')); w2['!cols']=[{wch:14},{wch:10},{wch:10},{wch:8},{wch:12},{wch:19},{wch:12}];
+        XLSX.utils.book_append_sheet(wb,w2,'Por vendedor');
+        var w3=XLSX.utils.aoa_to_sheet(agrupar('mes','Mes')); w3['!cols']=[{wch:12},{wch:10},{wch:10},{wch:8},{wch:12},{wch:19},{wch:12}];
+        XLSX.utils.book_append_sheet(wb,w3,'Por mes');
+        var w4=XLSX.utils.aoa_to_sheet(agrupar('cli','Cliente')); w4['!cols']=[{wch:34},{wch:10},{wch:10},{wch:8},{wch:12},{wch:19},{wch:12}];
+        XLSX.utils.book_append_sheet(wb,w4,'Por cliente');
+
+        XLSX.writeFile(wb,'Analisis_Despachos_'+hoyStr+'.xlsx');
+        toast('✓ Análisis generado ('+arr.length+' ventas, '+reales.length+' con dato real)','ok');
+      }catch(e){ toast('Error: '+e.message,'err'); }
+    });
+  }catch(e){ toast('Error cargando datos: '+e.message,'err'); }
 }
 
 // ── EXPORTAR DESPACHOS A EXCEL ───────────────────────────
