@@ -949,6 +949,30 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 </div>
 
 <!-- MODAL KARDEX -->
+<div class="mo" id="MEDMOV" style="z-index:120;" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit">&#9999;&#65039; Corregir movimiento</div>
+    <div class="msub" id="edmov-sub"></div>
+    <div id="edmov-aviso" style="display:none;background:#fef3c7;color:#92400e;border-radius:10px;padding:9px 11px;font-size:.75rem;font-weight:700;margin-bottom:10px;"></div>
+    <div class="fg"><label>Fecha</label>
+      <input type="date" id="edmov-fecha" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.9rem;outline:none;box-sizing:border-box;">
+    </div>
+    <div class="fg"><label id="edmov-lblq">Cantidad</label>
+      <input type="number" step="any" id="edmov-qty" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.9rem;outline:none;box-sizing:border-box;">
+      <div id="edmov-efecto" style="font-size:.72rem;color:var(--mu);margin-top:4px;"></div>
+    </div>
+    <div class="fg"><label>Nota</label>
+      <input type="text" id="edmov-nota" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;box-sizing:border-box;">
+    </div>
+    <div class="fg"><label>Motivo de la corrección <span style="color:#b91c1c">*</span></label>
+      <input type="text" id="edmov-motivo" placeholder="Ej.: me equivoqué de fecha" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;box-sizing:border-box;">
+    </div>
+    <div id="edmov-hist" style="display:none;background:var(--bg);border-radius:10px;padding:9px 11px;font-size:.72rem;color:var(--mu);margin-bottom:10px;white-space:pre-line;"></div>
+    <button onclick="guardarEdMov()" id="btnEDMOV" style="width:100%;padding:13px;background:var(--a);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.9rem;font-weight:800;cursor:pointer;">&#10003; GUARDAR CORRECCI&Oacute;N</button>
+    <button onclick="borrarEdMov()" id="btnDELMOV" style="width:100%;padding:10px;background:#fee2e2;color:#b91c1c;border:none;border-radius:12px;font-family:inherit;font-size:.8rem;font-weight:800;cursor:pointer;margin-top:8px;">Eliminar movimiento</button>
+  </div>
+</div>
 <div class="mo" id="MKARDEX" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal">
     <div class="mh"></div>
@@ -957,6 +981,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div style="display:flex;gap:8px;margin-bottom:12px;">
       <button onclick="exportKardex()" style="flex:1;padding:9px;background:#217346;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.78rem;font-weight:800;cursor:pointer;">📊 Exportar Excel</button>
     </div>
+    <div style="font-size:.68rem;color:var(--mu);margin-bottom:6px;">Toca un movimiento para corregirlo.</div>
     <!-- Cabecera -->
     <div style="display:flex;gap:8px;padding:6px 12px;background:var(--p);border-radius:8px;margin-bottom:4px;">
       <span style="color:#fff;font-size:.68rem;font-weight:800;width:70px;">FECHA</span>
@@ -4833,6 +4858,7 @@ function renderStockProds(){
           <button class="stock-btn edit" onclick="abrirMov('prod','${p.id}','${p.nombre}','ajuste')">⚖️ Ajuste</button>
           <button class="stock-btn edit" onclick="abrirEP('${p.id}')">✏️ Editar</button>
           <button class="stock-btn edit" onclick="editStockProd('${p.id}')">⚙️ Mínimo</button>
+          <button class="stock-btn" onclick="abrirKardex('prod','${p.id}','${(p.nombre||'').replace(/'/g,"\\'")}','${p.unidad||'UND'}')" style="background:#ede9fe;color:#6d28d9;">📋 Kardex</button>
           <button class="stock-btn" onclick="borrarProdStock('${p.id}')" style="background:#fee2e2;color:#b91c1c;">🗑️</button>
         </div>
       </div>
@@ -5359,6 +5385,7 @@ function renderStockGraneles(){
           <button class="stock-btn entrada" onclick="abrirCalc('${g.id}')">🏭 Producir</button>
           <button class="stock-btn edit" onclick="abrirMov('granel','${g.id}','${g.nombre}','ajuste')">⚖️ Ajuste</button>
           <button class="stock-btn edit" onclick="abrirRecetaGranel('${g.id}','${g.nombre.replace(/'/g,"\\'")}')">📋 Receta</button>
+          <button class="stock-btn" onclick="abrirKardex('granel','${g.id}','${g.nombre.replace(/'/g,"\\'")}','${g.unidad||'LT'}')" style="background:#ede9fe;color:#6d28d9;">📋 Kardex</button>
           <button class="stock-btn edit" onclick="editGranel('${g.id}')">✏️</button>
         </div>
       </div>
@@ -6543,80 +6570,220 @@ function abrirKardex(tipo,id,nombre,unidad){
   document.getElementById('MKARDEX-sub').textContent=nombre+' ('+unidad+')';
   renderKardex(tipo,id,unidad);
   document.getElementById('MKARDEX').classList.add('open');
+  var campo=tipo==='prod'?'producto_id':'materia_prima_id';
+  sbGet('movimientos_stock','?'+campo+'=eq.'+encodeURIComponent(id)).then(function(rows){
+    if(kardexTarget!==id) return;
+    var ids={}; rows.forEach(function(r){ids[r.id]=1;});
+    movimientos=movimientos.filter(function(m){ return !(m[campo]===id)||ids[m.id]; })
+      .filter(function(m){ return !ids[m.id]; }).concat(rows);
+    renderKardex(tipo,id,unidad);
+  }).catch(function(){});
 }
 
-function renderKardex(tipo,id,unidad){
-  const el=document.getElementById('kardex-list');
-  // Filtrar movimientos del item
-  var movs=movimientos.filter(function(m){
+// Efecto de un movimiento sobre el stock.
+// AJUSTE se guarda como diferencia CON SIGNO (contado - anterior):
+// antes el kardex lo restaba siempre, y un conteo que subía el
+// stock aparecía como salida.
+function _efMov(m){
+  var q=parseFloat(m.cantidad||0);
+  if(m.tipo==='ENTRADA'||m.tipo==='PRODUCCION') return q;
+  if(m.tipo==='AJUSTE') return q;
+  return -q;   // SALIDA, MERMA
+}
+function _movsKardex(tipo,id){
+  return movimientos.filter(function(m){
     if(tipo==='prod') return m.producto_id===id;
     if(tipo==='granel'||tipo==='mp') return m.materia_prima_id===id;
     return false;
   }).sort(function(a,b){
-    return pF(a.fecha||a.created_at||0)-pF(b.fecha||b.created_at||0);
+    var d=pF(a.fecha||a.created_at||0)-pF(b.fecha||b.created_at||0);
+    if(d!==0) return d;
+    return String(a.created_at||'')<String(b.created_at||'')?-1:1;
   });
-
+}
+function renderKardex(tipo,id,unidad){
+  const el=document.getElementById('kardex-list');
+  var movs=_movsKardex(tipo,id);
   if(!movs.length){
     el.innerHTML='<div class="empty"><p>Sin movimientos registrados</p></div>';
     return;
   }
-
-  // Stock inicial asumido como 0 + entradas - salidas
-  var saldo=0;
-  var html='';
+  var saldo=0, html='';
   movs.forEach(function(m){
-    var esEntrada=m.tipo==='ENTRADA';
-    var qty=parseFloat(m.cantidad||0);
-    if(esEntrada) saldo+=qty;
-    else saldo=Math.max(0,saldo-qty);
-    var tipoColor={
-      'ENTRADA':'ok','SALIDA':'salida','MERMA':'warn','AJUSTE':'parcial','PRODUCCION':'ok'
-    }[m.tipo]||'';
-    html+=`<div class="kardex-row">
+    var ef=_efMov(m);
+    saldo+=ef;
+    var tipoColor={'ENTRADA':'ok','SALIDA':'salida','MERMA':'warn','AJUSTE':'parcial','PRODUCCION':'ok'}[m.tipo]||'';
+    var ed=m.historial?' <span title="Corregido" style="font-size:.62rem;color:#b45309;font-weight:800;">✏️ corregido</span>':'';
+    html+=`<div class="kardex-row" onclick="abrirEdMov('${m.id}')" style="cursor:pointer;">
       <span class="kardex-fecha">${m.fecha||''}</span>
       <span class="kardex-tipo"><span class="mov-tipo ${m.tipo}" style="font-size:.6rem;">${m.tipo}</span></span>
-      <span class="kardex-cant ${esEntrada?'entrada':'salida'}">${esEntrada?'+':'-'}${qty}</span>
-      <span class="kardex-saldo">${saldo.toFixed(2)}</span>
-      <span class="kardex-nota">${m.nota||m.referencia||''}</span>
+      <span class="kardex-cant ${ef>=0?'entrada':'salida'}">${ef>=0?'+':''}${_r4(ef)}</span>
+      <span class="kardex-saldo" style="${saldo<0?'color:#b91c1c;':''}">${saldo.toFixed(2)}</span>
+      <span class="kardex-nota">${m.nota||m.referencia||''}${ed}</span>
     </div>`;
   });
+  // Comparar el saldo del kardex con el stock guardado
+  var arr=tipo==='prod'?prods:(tipo==='granel'?graneles:materias);
+  var it=arr.find(function(x){return x.id===id;});
+  var st=it?parseFloat(it.stock_actual||0):null;
+  if(st!=null&&Math.abs(st-saldo)>0.001){
+    html+='<div style="margin-top:10px;background:#fef3c7;color:#92400e;border-radius:10px;padding:9px 11px;font-size:.74rem;font-weight:700;">'
+      +'⚠️ El saldo del kardex ('+saldo.toFixed(2)+') no coincide con el stock registrado ('+st.toFixed(2)+'). '
+      +'Suele pasar con productos que tenían stock antes de empezar a registrar movimientos: un ajuste de conteo lo iguala.</div>';
+  }
   el.innerHTML=html;
 }
 
-function exportKardex(){
-  var NL=String.fromCharCode(10);
-  function toCSV(rows){
-    return rows.map(function(r){
-      return r.map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}).join(',');
-    }).join(NL);
+
+// ── Corrección de movimientos del kardex ──
+var edMovActual=null;
+// Movimientos generados por otro proceso: su cantidad se corrige en el origen
+function _movAutomatico(m){
+  return !!(m.op_id||(m.referencia&&m.referencia!==''));
+}
+function abrirEdMov(id){
+  var m=movimientos.find(function(x){return x.id===id;}); if(!m) return;
+  edMovActual=m;
+  var auto=_movAutomatico(m);
+  document.getElementById('edmov-sub').textContent=m.tipo+' · '+kardexNombre;
+  document.getElementById('edmov-fecha').value=m.fecha||'';
+  document.getElementById('edmov-nota').value=m.nota||'';
+  document.getElementById('edmov-motivo').value='';
+  var q=parseFloat(m.cantidad||0);
+  var qi=document.getElementById('edmov-qty');
+  qi.value=m.tipo==='AJUSTE'?q:Math.abs(q);
+  qi.disabled=auto;
+  document.getElementById('edmov-lblq').textContent=m.tipo==='AJUSTE'
+    ?'Diferencia del ajuste (+ subió / − bajó el stock)':'Cantidad';
+  var av=document.getElementById('edmov-aviso');
+  if(auto){
+    av.style.display='block';
+    av.textContent='Este movimiento lo generó '+(m.op_id?'una orden de producción':(m.referencia||'otro proceso'))
+      +'. Puedes corregir la fecha y la nota; la cantidad se corrige en su origen para no descuadrar los registros.';
+  } else av.style.display='none';
+  var hi=document.getElementById('edmov-hist');
+  if(m.historial){ hi.style.display='block'; hi.textContent='Correcciones anteriores:\n'+m.historial; }
+  else hi.style.display='none';
+  // Solo el gerente elimina, y solo movimientos manuales
+  document.getElementById('btnDELMOV').style.display=(sesion.rol==='gerente'&&!auto)?'block':'none';
+  edMovEfecto();
+  qi.oninput=edMovEfecto;
+  document.getElementById('MEDMOV').classList.add('open');
+}
+function edMovEfecto(){
+  var m=edMovActual; if(!m) return;
+  var el=document.getElementById('edmov-efecto');
+  var nq=parseFloat(document.getElementById('edmov-qty').value);
+  if(isNaN(nq)){ el.textContent=''; return; }
+  var nuevo=Object.assign({},m,{cantidad:m.tipo==='AJUSTE'?nq:Math.abs(nq)});
+  var diff=_efMov(nuevo)-_efMov(m);
+  if(Math.abs(diff)<0.0001){ el.textContent='Sin cambio en el stock.'; el.style.color='var(--mu)'; return; }
+  var it=_itemKardex(), st=it?parseFloat(it.stock_actual||0):0;
+  el.textContent='El stock actual pasará de '+_r4(st)+' a '+_r4(st+diff)+' ('+(diff>0?'+':'')+_r4(diff)+').';
+  el.style.color=(st+diff<0)?'#b91c1c':'#1d4ed8';
+}
+function _itemKardex(){
+  var arr=kardexTipo==='prod'?prods:(kardexTipo==='granel'?graneles:materias);
+  return arr.find(function(x){return x.id===kardexTarget;});
+}
+function _tablaKardex(){
+  return kardexTipo==='prod'?'productos':(kardexTipo==='granel'?'graneles':'materias_primas');
+}
+function _quien(){ return sesion.vendedor||sesion.rol||'usuario'; }
+
+async function guardarEdMov(){
+  var m=edMovActual; if(!m) return;
+  var motivo=(document.getElementById('edmov-motivo').value||'').trim();
+  if(!motivo){ toast('Indica el motivo de la corrección','err'); return; }
+  var nf=document.getElementById('edmov-fecha').value;
+  var nn=document.getElementById('edmov-nota').value;
+  if(!nf){ toast('La fecha es obligatoria','err'); return; }
+  if(nf>hoy()){ toast('La fecha no puede ser futura','err'); return; }
+  var auto=_movAutomatico(m);
+  var nq=parseFloat(m.cantidad||0);
+  if(!auto){
+    var v=parseFloat(document.getElementById('edmov-qty').value);
+    if(isNaN(v)){ toast('Cantidad inválida','err'); return; }
+    if(m.tipo!=='AJUSTE'&&v<=0){ toast('La cantidad debe ser mayor a 0','err'); return; }
+    nq=m.tipo==='AJUSTE'?v:Math.abs(v);
   }
-  var movs=movimientos.filter(function(m){
-    if(kardexTipo==='prod') return m.producto_id===kardexTarget;
-    return m.materia_prima_id===kardexTarget;
-  }).sort(function(a,b){
-    return pF(a.fecha||0)-pF(b.fecha||0);
+  var cambios=[];
+  if(nf!==(m.fecha||'')) cambios.push('fecha '+(m.fecha||'—')+' → '+nf);
+  if(Math.abs(nq-parseFloat(m.cantidad||0))>0.0001) cambios.push('cantidad '+_r4(m.cantidad)+' → '+_r4(nq));
+  if((nn||'')!==(m.nota||'')) cambios.push('nota "'+(m.nota||'')+'" → "'+nn+'"');
+  if(!cambios.length){ toast('No cambiaste nada','err'); return; }
+
+  var diff=_efMov(Object.assign({},m,{cantidad:nq}))-_efMov(m);
+  var it=_itemKardex(), st=it?parseFloat(it.stock_actual||0):0;
+  if(st+diff<-0.0001){ toast('El stock quedaría negativo ('+_r4(st+diff)+'). Revisa la cantidad.','err'); return; }
+
+  var btn=document.getElementById('btnEDMOV'); btn.disabled=true; btn.textContent='⏳ Guardando...';
+  try{
+    var linea=hoy()+' · '+_quien()+': '+cambios.join('; ')+'. Motivo: '+motivo;
+    var hist=(m.historial?m.historial+'\n':'')+linea;
+    var upd={fecha:nf,nota:nn||null,cantidad:nq,historial:hist};
+    await sbUpd('movimientos_stock',m.id,upd);
+    Object.assign(m,upd);
+    if(Math.abs(diff)>0.0001&&it){
+      var ns=Math.max(0,st+diff);
+      await sbUpd(_tablaKardex(),kardexTarget,{stock_actual:ns});
+      it.stock_actual=ns;
+    }
+    document.getElementById('MEDMOV').classList.remove('open');
+    renderKardex(kardexTipo,kardexTarget,kardexUnidad);
+    if(kardexTipo==='prod') renderStockProds();
+    else if(kardexTipo==='granel') renderStockGraneles();
+    else renderStockMaterias();
+    if(typeof renderMovimientos==='function') renderMovimientos();
+    toast('✓ Movimiento corregido','ok');
+  }catch(e){ toast('Error: '+e.message,'err'); }
+  finally{ btn.disabled=false; btn.textContent='✓ GUARDAR CORRECCIÓN'; }
+}
+
+async function borrarEdMov(){
+  var m=edMovActual; if(!m) return;
+  if(sesion.rol!=='gerente'){ toast('Solo el gerente puede eliminar movimientos','err'); return; }
+  if(_movAutomatico(m)){ toast('Este movimiento se corrige en su origen','err'); return; }
+  var ef=_efMov(m), it=_itemKardex(), st=it?parseFloat(it.stock_actual||0):0;
+  if(st-ef<-0.0001){ toast('Al eliminarlo el stock quedaría negativo. Corrígelo en vez de borrarlo.','err'); return; }
+  if(!confirm('¿Eliminar este movimiento?\n\nEl stock pasará de '+_r4(st)+' a '+_r4(st-ef)+'.\n\nPara no perder trazabilidad, es preferible CORREGIRLO. Elimina solo si fue un registro duplicado o por error.')) return;
+  try{
+    await sb('movimientos_stock','DELETE',null,'?id=eq.'+encodeURIComponent(m.id));
+    movimientos=movimientos.filter(function(x){return x.id!==m.id;});
+    if(it&&Math.abs(ef)>0.0001){
+      var ns=Math.max(0,st-ef);
+      await sbUpd(_tablaKardex(),kardexTarget,{stock_actual:ns});
+      it.stock_actual=ns;
+    }
+    document.getElementById('MEDMOV').classList.remove('open');
+    renderKardex(kardexTipo,kardexTarget,kardexUnidad);
+    if(kardexTipo==='prod') renderStockProds();
+    else if(kardexTipo==='granel') renderStockGraneles();
+    else renderStockMaterias();
+    toast('✓ Movimiento eliminado','ok');
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
+
+function exportKardex(){
+  _ensureXLSX(function(){
+    try{
+      var movs=_movsKardex(kardexTipo,kardexTarget);
+      var saldo=0;
+      var rows=[['Fecha','Tipo','Referencia','Entrada','Salida','Saldo','Lote','Nota','Historial de correcciones']];
+      movs.forEach(function(m){
+        var ef=_efMov(m); saldo+=ef;
+        rows.push([m.fecha||'',m.tipo,m.referencia||'',ef>0?_r4(ef):'',ef<0?_r4(-ef):'',_r4(saldo),
+                   m.lote||'',m.nota||'',(m.historial||'').replace(/\n/g,' | ')]);
+      });
+      var ws=XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols']=[{wch:12},{wch:11},{wch:14},{wch:10},{wch:10},{wch:10},{wch:12},{wch:34},{wch:60}];
+      ws['!autofilter']={ref:'A1:I1'};
+      var wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,ws,'Kardex');
+      XLSX.writeFile(wb,'Kardex_'+kardexNombre.replace(/[^a-zA-Z0-9]/g,'_')+'_'+hoy()+'.xlsx');
+      toast('✓ Kardex exportado','ok');
+    }catch(e){ toast('Error: '+e.message,'err'); }
   });
-  var saldo=0;
-  var rows=[['FECHA','TIPO','REFERENCIA','ENTRADA','SALIDA','SALDO','NOTA']];
-  movs.forEach(function(m){
-    var qty=parseFloat(m.cantidad||0);
-    var esEntrada=m.tipo==='ENTRADA';
-    if(esEntrada) saldo+=qty; else saldo=Math.max(0,saldo-qty);
-    rows.push([
-      m.fecha||'', m.tipo, m.referencia||'',
-      esEntrada?qty:'', esEntrada?'':qty,
-      saldo.toFixed(2), m.nota||''
-    ]);
-  });
-  var bom='﻿';
-  var blob=new Blob([bom+toCSV(rows)],{type:'text/csv;charset=utf-8;'});
-  var url=URL.createObjectURL(blob);
-  var a=document.createElement('a');
-  a.href=url;
-  a.download='Kardex_'+kardexNombre.replace(/[^a-zA-Z0-9]/g,'_')+'_'+hoy()+'.csv';
-  a.click();
-  URL.revokeObjectURL(url);
-  toast('Kardex exportado','ok');
 }
 
 // ── HISTORIAL PRECIOS MAT. PRIMA ─────────────────────────
