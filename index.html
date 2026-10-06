@@ -621,6 +621,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="tab" onclick="stockTab('recetas')" id="stab-recetas" style="white-space:nowrap;">Recetas</div>
     <div class="tab" onclick="stockTab('movimientos')" id="stab-movimientos" style="white-space:nowrap;">Movimientos</div>
     <div class="tab" onclick="stockTab('proveedores')" id="stab-proveedores" style="white-space:nowrap;">Proveedores</div>
+    <div class="tab" onclick="stockTab('costos')" id="stab-costos" style="white-space:nowrap;">💲 Costos</div>
     <div class="tab" onclick="stockTab('op')" id="stab-op" style="white-space:nowrap;">🏭 OP</div>
     <div class="tab" onclick="stockTab('mrp')" id="stab-mrp" style="white-space:nowrap;">🧮 MRP</div>
     <div class="tab" onclick="stockTab('oc')" id="stab-oc" style="white-space:nowrap;">🧾 Compras</div>
@@ -633,6 +634,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div id="stock-recetas" style="display:none"></div>
     <div id="stock-movimientos" style="display:none"></div>
     <div id="stock-proveedores" style="display:none"></div>
+    <div id="stock-costos" style="display:none"></div>
     <div id="stock-op" style="display:none"></div>
     <div id="stock-mrp" style="display:none"></div>
     <div id="stock-oc" style="display:none"></div>
@@ -754,7 +756,8 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
       </select>
     </div>
     <div class="fg"><label>Precio (S/) *</label><input type="number" id="ep-precio" step="0.01" min="0" class="minp" style="width:100%"></div>
-    <div class="fg"><label>Costo (S/)</label><input type="number" id="ep-costo" step="0.01" min="0" class="minp" style="width:100%"></div>
+    <div class="fg"><label>Costo sin IGV (S/)</label><input type="number" id="ep-costo" step="0.01" min="0" class="minp" style="width:100%">
+      <div id="ep-costo-nota" style="font-size:.7rem;margin-top:4px;"></div></div>
     <div class="fg"><label>Comisión por unidad (S/)</label><input type="number" id="ep-comision" step="0.01" min="0" class="minp" style="width:100%"></div>
     <div class="edit-actions">
       <button class="btn-edit" onclick="saveProd()" id="btnEP">✓ GUARDAR</button>
@@ -856,6 +859,10 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
         <div style="display:flex;align-items:center;gap:10px;">
           <input type="checkbox" id="exp-detalle" checked style="width:18px;height:18px;accent-color:var(--p);flex-shrink:0;cursor:pointer;">
           <span style="font-size:.85rem;font-weight:600;color:var(--txt);">Detalle por producto</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <input type="checkbox" id="exp-pagos" checked style="width:18px;height:18px;accent-color:var(--p);flex-shrink:0;cursor:pointer;">
+          <span style="font-size:.85rem;font-weight:600;color:var(--txt);">Pagos recibidos (monto real cobrado)</span>
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
           <input type="checkbox" id="exp-anuladas" style="width:18px;height:18px;accent-color:var(--p);flex-shrink:0;cursor:pointer;">
@@ -1174,6 +1181,18 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
       <input type="number" id="recpg-mpqty" placeholder="Cant." step="0.01" min="0" style="flex:1;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
       <button onclick="addRecetaProdGranel('mp')" style="padding:9px 12px;background:var(--p);color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-size:.8rem;">+</button>
     </div>
+    <div style="font-size:.72rem;font-weight:800;color:var(--mu);margin:12px 0 5px;">🔗 PRODUCTO (para kits y packs)</div>
+    <div style="display:flex;gap:6px;align-items:flex-start;">
+      <div class="cbx" style="flex:3;position:relative;">
+        <input type="text" id="recpg-pr-q" class="msel" autocomplete="off" placeholder="🔍 Buscar producto..." oninput="cbxFilter('recpg-pr')" onfocus="cbxFilter('recpg-pr')" onblur="setTimeout(function(){cbxHide('recpg-pr')},180)">
+        <input type="hidden" id="recpg-pr">
+        <div id="recpg-pr-list" class="cbx-list"></div>
+      </div>
+      <input type="number" id="recpg-prqty" placeholder="Cant." step="1" min="0" style="flex:1;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;">
+      <button onclick="addRecetaProdGranel('producto')" style="padding:9px 12px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-size:.8rem;">+</button>
+    </div>
+    <div style="font-size:.68rem;color:var(--mu);margin-top:5px;">Ej.: el kit "5 bidones + 1" lleva 6 × BIDÓN DE REFRIGERANTE. Su costo será la suma de los productos.</div>
+    <div id="recpg-costo" style="margin-top:12px;"></div>
     <div style="height:8px"></div>
   </div>
 </div>
@@ -2023,11 +2042,14 @@ async function guardar(){
 
     // 2. Guardar detalle
     for(const item of snap){
+      var _pc=prods.find(function(x){return x.id===item.id;});
+      var _cu=_pc?parseFloat(_pc.costo||0):0;
       await sbIns('detalle_ventas',{
         id:gid(), venta_id:vid, producto_id:item.id,
         cantidad:item.qty, precio_base:item.precioBase,
         precio_final:item.precio, total:item.precio*item.qty,
-        comision:item.comision*item.qty
+        comision:item.comision*item.qty,
+        costo_unitario:_cu>0?_cu:null
       });
     }
 
@@ -2389,6 +2411,25 @@ async function regenerarNota(vid,vendedorNuevo){
   return url;
 }
 
+function _notaCostoEP(pid){
+  var inp=document.getElementById('ep-costo'), nota=document.getElementById('ep-costo-nota');
+  if(!inp||!nota) return;
+  inp.disabled=false; nota.textContent=''; nota.style.color='var(--mu)';
+  if(!pid||!tieneReceta(pid)){
+    if(pid) nota.textContent='Sin receta: el costo se ingresa a mano.';
+    return;
+  }
+  var r=costoRecetaProd(pid);
+  if(r.completo){
+    inp.value=_r4(r.costo); inp.disabled=true;
+    nota.style.color='#166534';
+    nota.textContent='✓ Calculado desde la receta. Para cambiarlo, actualiza el costo de sus insumos.';
+  } else {
+    nota.style.color='#92400e';
+    nota.textContent='⚠️ La receta está incompleta (falta costo en: '+r.faltan.join(', ')+'). Mientras tanto puedes ingresar el costo a mano.';
+  }
+}
+
 async function regenerarNotaManual(){
   if(!editId){ toast('Abre una venta primero','err'); return; }
   if(!confirm('¿Regenerar la nota de venta con los datos actuales?\n\nSe reemplaza el PDF anterior. Si ya se lo enviaste al cliente, el enlace antiguo dejará de ser el vigente.')) return;
@@ -2452,7 +2493,7 @@ async function saveEdit(){
         for(const d of dets){
           const pr=prods.find(function(x){return x.id===d.producto_id;})||{};
           const nueva=(typeof calcComision==='function')
-            ? calcComision(vendNuevo,parseFloat(d.precio_final||0),parseFloat(pr.costo||0),parseFloat(d.cantidad||0))
+            ? calcComision(vendNuevo,parseFloat(d.precio_final||0),_costoLinea(d),parseFloat(d.cantidad||0))
             : parseFloat(d.comision||0);
           if(Math.abs((parseFloat(d.comision||0))-(nueva||0))>0.005)
             await sbUpd('detalle_ventas',d.id,{comision:nueva||0});
@@ -2613,6 +2654,7 @@ function accionPlus(){
 function abrirMP(){
   editProdId=null; newProdPhoto=null;
   ['ep-nombre','ep-precio','ep-costo','ep-comision'].forEach(id=>document.getElementById(id).value='');
+  _notaCostoEP(null);
   document.getElementById('ep-cat').value='';
   document.getElementById('prod-foto-prev').style.display='none';
   document.getElementById('prod-foto-icon').style.display='block';
@@ -2758,6 +2800,7 @@ function abrirEP(id){
   document.getElementById('ep-cat').value=p.categoria||'';
   document.getElementById('ep-precio').value=p.precio||'';
   document.getElementById('ep-costo').value=p.costo||'';
+  _notaCostoEP(p.id);
   document.getElementById('ep-comision').value=p.comision||'';
   const prev=document.getElementById('prod-foto-prev');
   const icon=document.getElementById('prod-foto-icon');
@@ -2814,6 +2857,7 @@ async function saveProd(){
     renderP(prods);
     if(document.getElementById('stock-productos')) renderStockProds();
     toast('✓ Producto guardado','ok');
+    dispararCadena();
     document.getElementById('MEP').classList.remove('open');
   }catch(e){toast('Error: '+e.message,'err');}
   finally{btn.disabled=false;btn.textContent='✓ GUARDAR';}
@@ -2997,7 +3041,7 @@ async function renderUtilidad(){
     dets.forEach(function(d){
       if(!idsMes[d.venta_id]) return;
       var pr=prods.find(function(p){return p.id===d.producto_id;});
-      var costo=pr?parseFloat(pr.costo||0):0;
+      var costo=_costoLinea(d);
       var qty=parseFloat(d.cantidad||0);
       cogs+=costo*qty;
       var v=vMes.find(function(x){return x.id===d.venta_id;});
@@ -3329,7 +3373,8 @@ async function cotConvertir(){
         : 0;
       await sbIns('detalle_ventas',{id:gid(),venta_id:vid,producto_id:d.producto_id,
         cantidad:d.cantidad,precio_base:d.precio_lista,precio_final:d.precio_final,
-        total:d.total,comision:com||0});
+        total:d.total,comision:com||0,
+        costo_unitario:parseFloat(pr.costo||0)>0?parseFloat(pr.costo):null});
     }
     await sbUpd('cotizaciones',cotActual.id,{estado:'APROBADA',venta_id:vid});
     cotActual.estado='APROBADA'; cotActual.venta_id=vid;
@@ -3952,7 +3997,7 @@ async function renderComisiones(){
       const dets=allDets.filter(d=>d.venta_id===v.id);
       dets.forEach(d=>{
         const pr=prods.find(p=>p.id===d.producto_id);
-        const costo=pr?parseFloat(pr.costo||0):0;
+        const costo=_costoLinea(d);
         const com=calcComision(vend,parseFloat(d.precio_final||0),costo,parseFloat(d.cantidad||1));
         comVend[vend]+=com;
         const c=clis.find(x=>x.id===v.cliente_id);
@@ -3963,7 +4008,7 @@ async function renderComisiones(){
           producto:pr?pr.nombre||d.producto_id:d.producto_id,
           cantidad:d.cantidad,
           pvNeto:(parseFloat(d.precio_final||0)/1.18).toFixed(2),
-          costo:(pr?parseFloat(pr.costo||0):0).toFixed(2),
+          costo:_costoLinea(d).toFixed(2),
           comision:com.toFixed(2)
         });
       });
@@ -4093,7 +4138,7 @@ function _armarExcelComisiones(allDets){
     dets.forEach(function(d){
       var pr=prods.find(function(p){return p.id===d.producto_id;})||{};
       var q=parseFloat(d.cantidad||0), pv=parseFloat(d.precio_final||0), pvn=pv/1.18;
-      var cu=parseFloat(pr.costo||0);
+      var cu=_costoLinea(d);
       var vn=pvn*q, ct=cu*q, mg=vn-ct, mgp=pvn?(pvn-cu)/pvn*100:0;
       var com=calcComision(v.vendedor,pv,cu,q);
       var reg=parseFloat(d.comision||0);
@@ -4142,7 +4187,7 @@ function _armarExcelComisiones(allDets){
     tramos[tr]+=sal; saldoTot+=sal;
     var comJ=(detPorVenta[v.id]||[]).reduce(function(s,d){
       var pr=prods.find(function(p){return p.id===d.producto_id;})||{};
-      return s+calcComision(v.vendedor,parseFloat(d.precio_final||0),parseFloat(pr.costo||0),parseFloat(d.cantidad||0));
+      return s+calcComision(v.vendedor,parseFloat(d.precio_final||0),_costoLinea(d),parseFloat(d.cantidad||0));
     },0);
     cart.push([v.id,v.fecha||'',v.fecha_estimada_pago||'',venc,dias(v.fecha,hoyStr),tr,v.vendedor||'',
       cl?(cl.nombres||cl.alias||''):'',_r2(tot),_r2(ab),_r2(sal),_r2(comJ)]);
@@ -4296,7 +4341,7 @@ async function exportComisionesPDF(){
       var dets=allDets.filter(function(d){return d.venta_id===v.id;});
       dets.forEach(function(d){
         var pr=prods.find(function(p){return p.id===d.producto_id;});
-        var costo=pr?parseFloat(pr.costo||0):0;
+        var costo=_costoLinea(d);
         var pv=parseFloat(d.precio_final||0);
         var com=calcComision(vend,pv,costo,parseFloat(d.cantidad||1));
         var c=clis.find(function(x){return x.id===v.cliente_id;});
@@ -4392,7 +4437,7 @@ async function exportComisionesPDF(){
 // ── STOCK ─────────────────────────────────────────────────
 function stockTab(t){
   // Ocultar todos primero
-  ['resumen','productos','graneles','materias','recetas','movimientos','proveedores','op','mrp','oc'].forEach(x=>{
+  ['resumen','productos','graneles','materias','recetas','movimientos','proveedores','costos','op','mrp','oc'].forEach(x=>{
     const el=document.getElementById('stock-'+x);
     const tab=document.getElementById('stab-'+x);
     if(el){el.style.display='none';el.style.minHeight='';}
@@ -4412,6 +4457,7 @@ function stockTab(t){
   else if(t==='recetas') renderStockRecetas();
   else if(t==='movimientos') renderMovimientos();
   else if(t==='proveedores') renderProveedores();
+  else if(t==='costos') renderCostos();
   else if(t==='op') renderOPs();
   else if(t==='mrp') renderMRP();
   else if(t==='oc') renderOC();
@@ -4791,22 +4837,32 @@ async function renderOC(){
 async function recibirOC(ocId){
   var oc=ordenesCompra.find(function(x){return x.id===ocId;}); if(!oc) return;
   if(oc.estado==='RECIBIDA') return;
-  if(!confirm('¿Marcar '+oc.numero+' como recibida? Se sumará el stock de cada ítem.')) return;
+  if(!confirm('¿Marcar '+oc.numero+' como recibida?\n\nSe sumará el stock de cada ítem y el costo de cada materia prima pasará a ser el precio de esta compra.')) return;
   try{
-    var items=oc.items||[];
+    var items=oc.items||[], cambiosPrecio=0;
     for(var i=0;i<items.length;i++){
       var it=items[i];
       if(!it.materia_prima_id) continue;
       var m=materias.find(function(x){return x.id===it.materia_prima_id;});
       if(!m) continue;
       var nuevo=parseFloat(m.stock_actual||0)+parseFloat(it.cantidad||0);
-      await sbUpd('materias_primas',m.id,{stock_actual:nuevo});
-      m.stock_actual=nuevo;
+      var upd={stock_actual:nuevo};
+      // Costo = último precio de compra (si la OC trae precio)
+      var precio=parseFloat(it.precio||0), anterior=parseFloat(m.costo_unitario||0);
+      if(precio>0&&Math.abs(precio-anterior)>0.0001){
+        upd.costo_unitario=precio;
+        await sbIns('movimientos_stock',{id:gid(),tipo:'AJUSTE',referencia:'PRECIO',materia_prima_id:m.id,cantidad:0,
+          nota:'Precio por '+oc.numero+': S/ '+anterior.toFixed(4)+' → S/ '+precio.toFixed(4),fecha:hoy()}).catch(function(){});
+        cambiosPrecio++;
+      }
+      await sbUpd('materias_primas',m.id,upd);
+      Object.assign(m,upd);
       await sbIns('movimientos_stock',{id:gid(),tipo:'ENTRADA',referencia:'OC '+oc.numero,materia_prima_id:m.id,cantidad:parseFloat(it.cantidad||0),nota:'Recepción '+oc.numero,fecha:hoy()});
     }
     await sbUpd('ordenes_compra',oc.id,{estado:'RECIBIDA'});
     oc.estado='RECIBIDA';
-    toast('✓ '+oc.numero+' recibida — stock actualizado','ok');
+    toast('✓ '+oc.numero+' recibida — stock actualizado'+(cambiosPrecio?(' · '+cambiosPrecio+' precio(s) actualizado(s)'):''),'ok');
+    if(cambiosPrecio) dispararCadena();
     renderOC();
   }catch(e){ toast('Error: '+e.message,'err'); }
 }
@@ -4969,6 +5025,9 @@ function exportarFormulas(){
           if(r.granel_id){
             var g=graneles.find(function(x){return x.id===r.granel_id;});
             codc=g?(g.codigo||''):''; nombre=g?g.nombre:'(no encontrado)'; tipo='Granel'; unidad=g?(g.unidad||'LT'):''; cu=g?parseFloat(g.costo_unitario||0):0;
+          } else if(r.producto_componente_id){
+            var pk=prods.find(function(x){return x.id===r.producto_componente_id;});
+            codc=pk?_codProd(pk):''; nombre=pk?pk.nombre:'(no encontrado)'; tipo='Producto (kit)'; unidad=pk?(pk.unidad||'UND'):''; cu=pk?parseFloat(pk.costo||0):0;
           } else {
             var m=materias.find(function(x){return x.id===r.materia_prima_id;});
             codc=m?(m.codigo||''):''; nombre=m?m.nombre:'(no encontrado)'; tipo=m?(m.tipo||'Insumo'):'Insumo'; unidad=m?(m.unidad||''):''; cu=m?parseFloat(m.costo_unitario||0):0;
@@ -5038,6 +5097,10 @@ function renderStockRecetas(){
         if(r.granel_id){
           const g=graneles.find(x=>x.id===r.granel_id);
           return`<div style="font-size:.75rem;color:var(--mu);margin-top:4px;">• 🧪 ${g?g.nombre:'?'}: ${r.cantidad} ${g?g.unidad||'LT':'LT'}</div>`;
+        }
+        if(r.producto_componente_id){
+          const pk=prods.find(x=>x.id===r.producto_componente_id);
+          return`<div style="font-size:.75rem;color:var(--mu);margin-top:4px;">• 🔗 ${pk?pk.nombre:'?'}: ${r.cantidad} ${pk?pk.unidad||'UND':'UND'}</div>`;
         }
         const mp=materias.find(m=>m.id===r.materia_prima_id);
         return`<div style="font-size:.75rem;color:var(--mu);margin-top:4px;">• ${mp?mp.nombre:'?'}: ${r.cantidad} ${mp?mp.unidad||'':'UND'}</div>`;
@@ -5530,7 +5593,13 @@ function initPickerRecpgMp(){
   cbxInit('recpg-mp', items, {placeholder:'Buscar envase...', labelNew:'Crear envase',
     onNew:function(q){nuevaMPDesdePicker('recpg-mp','Envase',q);}});
 }
+function initPickerRecpgPr(){
+  var items=prods.filter(function(p){return p.id!==editRecetaPGId;})
+    .map(function(p){return {id:p.id,label:p.nombre+' ('+(p.unidad||'UND')+')'};});
+  cbxInit('recpg-pr', items, {placeholder:'Buscar producto...'});
+}
 function cbxReinit(pk){
+  if(pk==='recpg-pr') initPickerRecpgPr();
   if(pk==='recgl-mp') initPickerRecglMp();
   else if(pk==='recpg-mp') initPickerRecpgMp();
   else if(pk==='recpg-gl') initPickerRecpgGl();
@@ -5616,6 +5685,7 @@ async function recalcularCostoGranel(granelId){
     await sbUpd('graneles',granelId,{costo_unitario:costo});
     var g=graneles.find(function(x){return x.id===granelId;});
     if(g) g.costo_unitario=costo;
+    dispararCadena();
     // Mostrar costo actualizado en el modal
     var costoEl=document.getElementById('gl-costo-calc');
     if(costoEl) costoEl.textContent='Costo calculado: S/ '+costo.toFixed(4)+' por unidad';
@@ -5629,8 +5699,10 @@ function abrirReceta(prodId, prodNombre){
   document.getElementById('MRPG-sub').textContent=prodNombre;
   initPickerRecpgGl();
   initPickerRecpgMp();
+  initPickerRecpgPr();
   document.getElementById('recpg-glqty').value='';
   document.getElementById('recpg-mpqty').value='';
+  document.getElementById('recpg-prqty').value='';
   renderRecetaProdGranelList(prodId);
   document.getElementById('MRPG').classList.add('open');
 }
@@ -5643,6 +5715,17 @@ function renderRecetaProdGranelList(prodId){
     return;
   }
   el.innerHTML=recs.map(r=>{
+    if(r.producto_componente_id){
+      const pk=prods.find(x=>x.id===r.producto_componente_id);
+      const cu=pk?parseFloat(pk.costo||0):0;
+      return`<div class="abono-card" style="background:#dcfce7;">
+        <div class="abono-info">
+          <div class="abono-monto">🔗 ${pk?pk.nombre:'?'}</div>
+          <div class="abono-fecha">${r.cantidad} ${pk?pk.unidad||'UND':'UND'} · ${cu>0?'S/ '+(cu*r.cantidad).toFixed(2):'<b style="color:#b91c1c">sin costo</b>'}</div>
+        </div>
+        <button class="abdel" onclick="deleteRecetaPGItem('${r.id}','${prodId}')">✕</button>
+      </div>`;
+    }
     if(r.granel_id){
       const g=graneles.find(x=>x.id===r.granel_id);
       return`<div class="abono-card" style="background:#fef3c7;">
@@ -5663,6 +5746,17 @@ function renderRecetaProdGranelList(prodId){
       </div>`;
     }
   }).join('');
+  _renderCostoReceta(prodId);
+}
+function _renderCostoReceta(prodId){
+  var el=document.getElementById('recpg-costo'); if(!el) return;
+  if(!tieneReceta(prodId)){ el.innerHTML=''; return; }
+  var r=costoRecetaProd(prodId);
+  el.innerHTML='<div style="background:'+(r.completo?'#dcfce7':'#fef3c7')+';color:'+(r.completo?'#166534':'#92400e')
+    +';border-radius:10px;padding:10px 12px;font-size:.78rem;font-weight:700;">'
+    +(r.completo?('✓ Costo calculado: S/ '+r.costo.toFixed(2)+' por unidad')
+      :('⚠️ Costo incompleto (S/ '+r.costo.toFixed(2)+' parcial). Falta costo en: '+r.faltan.join(', ')+'. Hasta completarlo se mantiene el costo manual del producto.'))
+    +'</div>';
 }
 
 async function addRecetaProdGranel(tipo){
@@ -5670,22 +5764,32 @@ async function addRecetaProdGranel(tipo){
   if(tipo==='granel'){
     id=document.getElementById('recpg-gl').value;
     qty=parseFloat(document.getElementById('recpg-glqty').value);
+  } else if(tipo==='producto'){
+    id=document.getElementById('recpg-pr').value;
+    qty=parseFloat(document.getElementById('recpg-prqty').value);
   } else {
     id=document.getElementById('recpg-mp').value;
     qty=parseFloat(document.getElementById('recpg-mpqty').value);
   }
   if(!id){toast('Selecciona un elemento','err');return;}
   if(!qty||qty<=0){toast('Ingresa una cantidad','err');return;}
+  if(tipo==='producto'){
+    if(id===editRecetaPGId){ toast('Un producto no puede contenerse a sí mismo','err'); return; }
+    if(contieneProducto(id,editRecetaPGId)){ toast('Ese producto ya contiene a este: se formaría un ciclo','err'); return; }
+  }
   try{
     var rec={id:gid(),producto_id:editRecetaPGId,cantidad:qty};
     if(tipo==='granel'){rec.granel_id=id;rec.es_granel=true;}
+    else if(tipo==='producto'){rec.producto_componente_id=id;rec.es_granel=false;}
     else{rec.materia_prima_id=id;rec.es_granel=false;}
     await sbIns('recetas',rec);
     recetas.push(rec);
     renderRecetaProdGranelList(editRecetaPGId);
     if(tipo==='granel'){document.getElementById('recpg-glqty').value='';initPickerRecpgGl();}
+    else if(tipo==='producto'){document.getElementById('recpg-prqty').value='';initPickerRecpgPr();}
     else{document.getElementById('recpg-mpqty').value='';initPickerRecpgMp();}
     toast('✓ Agregado','ok');
+    dispararCadena();
   }catch(e){toast('Error: '+e.message,'err');}
 }
 
@@ -5695,6 +5799,7 @@ async function deleteRecetaPGItem(recId,prodId){
     recetas=recetas.filter(x=>x.id!==recId);
     renderRecetaProdGranelList(prodId);
     toast('✓ Eliminado','ok');
+    dispararCadena();
   }catch(e){toast('Error: '+e.message,'err');}
 }
 
@@ -5855,36 +5960,238 @@ async function descontarStockVenta(ventaId){
 }
 
 // ── 2. COSTO DEL PRODUCTO CALCULADO DESDE RECETA ──
-function calcularCostoProducto(prodId){
-  var recs=recetas.filter(function(r){return r.producto_id===prodId;});
-  var costo=0;
-  recs.forEach(function(r){
-    if(r.granel_id){
-      // Costo del granel × cantidad
-      var g=graneles.find(function(x){return x.id===r.granel_id;});
-      if(g) costo+=parseFloat(g.costo_unitario||0)*parseFloat(r.cantidad||0);
-    } else if(r.materia_prima_id){
-      // Costo de materia prima × cantidad
-      var mp=materias.find(function(m){return m.id===r.materia_prima_id;});
-      if(mp) costo+=parseFloat(mp.costo_unitario||0)*parseFloat(r.cantidad||0);
-    }
+
+// ══════════════════════════════════════════════════════════
+//  PANTALLA DE COSTOS (llenado rápido y control)
+// ══════════════════════════════════════════════════════════
+var _vendPorProd=null;
+async function _cargarVendidos(forzar){
+  if(_vendPorProd&&!forzar) return _vendPorProd;
+  var m={};
+  try{
+    var rows=await sbGet('detalle_ventas','?select=producto_id,cantidad');
+    rows.forEach(function(r){ var k=r.producto_id; if(!m[k]) m[k]={lin:0,uni:0}; m[k].lin++; m[k].uni+=parseFloat(r.cantidad||0); });
+  }catch(e){}
+  _vendPorProd=m; return m;
+}
+function _tipoCosto(p){
+  if(!tieneReceta(p.id)) return {t:'MANUAL',info:null};
+  var r=costoRecetaProd(p.id);
+  var kit=recetas.some(function(x){return x.producto_id===p.id&&x.producto_componente_id;});
+  return {t:kit?'KIT':'RECETA',info:r};
+}
+async function renderCostos(){
+  var el=document.getElementById('stock-costos'); if(!el) return;
+  if(!_vendPorProd) el.innerHTML='<div class="empty"><p>Cargando...</p></div>';
+  var vend=await _cargarVendidos(false);
+  var filtro=(document.getElementById('cst-filtro')||{}).value||'sin';
+  var q=((document.getElementById('cst-q')||{}).value||'').toLowerCase().trim();
+  var lista=prods.map(function(p){
+    var tc=_tipoCosto(p), c=parseFloat(p.costo||0);
+    var sinCosto=!(c>0)||(tc.info&&!tc.info.completo&&!(c>0));
+    return {p:p,tc:tc,c:c,sin:!(c>0),inc:!!(tc.info&&!tc.info.completo),v:vend[p.id]||{lin:0,uni:0}};
   });
-  return costo;
+  var nSin=lista.filter(function(x){return x.sin;}).length;
+  var nSinVend=lista.filter(function(x){return x.sin&&x.v.lin>0;}).length;
+  var nInc=lista.filter(function(x){return x.inc;}).length;
+  var arr=lista.filter(function(x){
+    if(filtro==='sin'&&!x.sin) return false;
+    if(filtro==='inc'&&!x.inc) return false;
+    if(filtro==='manual'&&x.tc.t!=='MANUAL') return false;
+    if(filtro==='receta'&&x.tc.t==='MANUAL') return false;
+    if(q&&(x.p.nombre||'').toLowerCase().indexOf(q)<0&&String(x.p.id).toLowerCase().indexOf(q)<0) return false;
+    return true;
+  }).sort(function(a,b){ return b.v.lin-a.v.lin||(a.p.nombre||'').localeCompare(b.p.nombre||''); });
+
+  if(!document.getElementById('cst-list')){
+    el.innerHTML='<div id="cst-kpis"></div><div id="cst-ctrl"></div><div id="cst-list"></div>';
+  }
+  document.getElementById('cst-kpis').innerHTML='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;">'
+    +_kpiCst(nSin,'sin costo',nSin?'#b91c1c':'#166534')
+    +_kpiCst(nSinVend,'sin costo y ya vendidos',nSinVend?'#b91c1c':'#166534')
+    +_kpiCst(nInc,'recetas incompletas',nInc?'#b45309':'#166534')
+    +'</div>';
+  var ctrl=document.getElementById('cst-ctrl');
+  if(!ctrl.innerHTML) ctrl.innerHTML='<div style="display:flex;gap:6px;margin-bottom:8px;">'
+    +'<input id="cst-q" oninput="renderCostos()" placeholder="🔍 Buscar producto..." style="flex:1;padding:9px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.84rem;outline:none;min-width:0;">'
+    +'<select id="cst-filtro" onchange="renderCostos()" style="padding:9px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.78rem;background:var(--card);">'
+    +[['sin','Sin costo'],['inc','Receta incompleta'],['manual','Costo manual'],['receta','Con receta/kit'],['todos','Todos']].map(function(o){
+       return '<option value="'+o[0]+'"'+(o[0]===filtro?' selected':'')+'>'+o[1]+'</option>';}).join('')
+    +'</select></div>'
+    +'<button onclick="recalcularConVistaPrevia()" style="width:100%;padding:10px;background:var(--card);color:var(--p);border:1.5px solid var(--p);border-radius:10px;font-family:inherit;font-size:.8rem;font-weight:800;cursor:pointer;margin-bottom:10px;">🔄 Recalcular costos desde recetas</button>'
+    +'<div style="font-size:.7rem;color:var(--mu);margin-bottom:8px;">Ordenado por los más vendidos. El costo va <b>sin IGV</b>. Se guarda al salir de la casilla.</div>';
+  var lst=document.getElementById('cst-list');
+  if(!arr.length){ lst.innerHTML='<div class="empty"><p>'+(filtro==='sin'?'✓ Ningún producto sin costo.':'Sin resultados.')+'</p></div>'; return; }
+  lst.innerHTML=arr.map(function(x){
+    var p=x.p, pvn=parseFloat(p.precio||0)/1.18;
+    var mg=(x.c>0&&pvn>0)?((pvn-x.c)/pvn*100):null;
+    var badge={'MANUAL':['#f1f5f9','#475569','Manual'],'RECETA':['#dbeafe','#1d4ed8','Receta'],'KIT':['#dcfce7','#166534','Kit']}[x.tc.t];
+    var editable=x.tc.t==='MANUAL'||x.inc;
+    var campo=editable
+      ?'<input type="number" step="0.01" min="0" value="'+(x.c>0?_r4(x.c):'')+'" placeholder="0.00" onchange="guardarCostoManual(\''+p.id+'\',this)" style="width:92px;padding:7px 8px;border:1.5px solid '+(x.sin?'#fca5a5':'var(--bdr)')+';border-radius:8px;font-family:inherit;font-size:.85rem;font-weight:800;text-align:right;">'
+      :'<div style="font-size:.9rem;font-weight:800;color:#166534;">S/ '+x.c.toFixed(2)+'</div>';
+    var aviso='';
+    if(x.inc) aviso='<div style="font-size:.66rem;color:#b45309;margin-top:3px;">Receta incompleta, falta costo en: '+x.tc.info.faltan.join(', ')+'</div>';
+    if(mg!=null&&mg<20) aviso+='<div style="font-size:.66rem;color:#b91c1c;margin-top:3px;font-weight:700;">Margen bajo: '+mg.toFixed(1)+'%</div>';
+    return '<div class="stock-card" style="align-items:center;">'
+      +'<div class="stock-info" style="min-width:0;">'
+      +'<div class="stock-nombre" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+p.nombre+'</div>'
+      +'<div class="stock-unidad"><span style="font-size:.6rem;font-weight:800;padding:1px 6px;border-radius:5px;background:'+badge[0]+';color:'+badge[1]+';">'+badge[2]+'</span> '
+      +'Precio S/ '+parseFloat(p.precio||0).toFixed(2)+' · '+(x.v.lin?('vendido '+x.v.lin+'×'):'sin ventas')
+      +(mg!=null?' · margen '+mg.toFixed(0)+'%':'')+'</div>'+aviso+'</div>'
+      +'<div style="flex-shrink:0;text-align:right;">'+campo+'</div></div>';
+  }).join('');
 }
 
-async function actualizarCostosProductos(){
-  // Recalcular costo de todos los productos desde receta
-  for(var i=0;i<prods.length;i++){
-    var p=prods[i];
-    var recs=recetas.filter(function(r){return r.producto_id===p.id;});
-    if(!recs.length) continue;
-    var costo=calcularCostoProducto(p.id);
-    if(Math.abs(costo-(parseFloat(p.costo||0)))>0.001){
-      await sbUpd('productos',p.id,{costo:costo});
-      p.costo=costo;
-    }
-  }
+// Vista previa antes de aplicar la cadena a mano: cuántos costos cambiarían
+async function recalcularConVistaPrevia(){
+  // simular graneles
+  var gSim={};
+  graneles.forEach(function(g){ var gi=costoGranelInfo(g.id); gSim[g.id]=gi.tieneReceta?gi.costo:parseFloat(g.costo_unitario||0); });
+  var nG=graneles.filter(function(g){ return Math.abs(gSim[g.id]-parseFloat(g.costo_unitario||0))>0.0001; }).length;
+  // simular productos (una pasada con graneles ya simulados)
+  var bkp={}; graneles.forEach(function(g){ bkp[g.id]=g.costo_unitario; g.costo_unitario=gSim[g.id]; });
+  var cambios=[];
+  prods.forEach(function(p){
+    if(!tieneReceta(p.id)) return;
+    var r=costoRecetaProd(p.id);
+    if(r.completo&&Math.abs(r.costo-parseFloat(p.costo||0))>0.0001) cambios.push({n:p.nombre,a:parseFloat(p.costo||0),b:r.costo});
+  });
+  graneles.forEach(function(g){ g.costo_unitario=bkp[g.id]; });
+  if(!nG&&!cambios.length){ toast('Los costos ya están al día','ok'); return; }
+  cambios.sort(function(x,y){ return Math.abs(y.b-y.a)-Math.abs(x.b-x.a); });
+  var det=cambios.slice(0,8).map(function(c){ return '• '+c.n.substring(0,32)+': S/ '+c.a.toFixed(2)+' → S/ '+c.b.toFixed(2); }).join('\n');
+  var msg='Se actualizarán '+cambios.length+' producto(s) y '+nG+' granel(es).\n\n'
+    +(det?('Mayores cambios:\n'+det+(cambios.length>8?'\n… y '+(cambios.length-8)+' más':'')+'\n\n'):'')
+    +'El costo calculado desde la receta reemplaza al costo manual de esos productos. Los kits se recalculan después.\n\n¿Aplicar?';
+  if(!confirm(msg)) return;
+  toast('Recalculando...','ok');
+  await recalcularCadenaCostos(false);
 }
+
+function _kpiCst(n,lbl,col){
+  return '<div style="background:var(--card);border-radius:12px;padding:10px 8px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.05);">'
+    +'<div style="font-size:1.25rem;font-weight:900;color:'+col+';">'+n+'</div>'
+    +'<div style="font-size:.62rem;color:var(--mu);font-weight:700;line-height:1.2;">'+lbl+'</div></div>';
+}
+async function guardarCostoManual(pid,inp){
+  var p=prods.find(function(x){return x.id===pid;}); if(!p) return;
+  var v=parseFloat(inp.value);
+  if(inp.value===''){ v=0; }
+  if(isNaN(v)||v<0){ toast('Costo inválido','err'); inp.value=p.costo||''; return; }
+  var pvn=parseFloat(p.precio||0)/1.18;
+  if(v>0&&pvn>0&&v>=pvn&&!confirm('El costo (S/ '+v.toFixed(2)+') es igual o mayor al precio sin IGV (S/ '+pvn.toFixed(2)+'). Venderías a pérdida. ¿Guardar de todos modos?')){ inp.value=p.costo||''; return; }
+  try{
+    await sbUpd('productos',pid,{costo:v}); p.costo=v;
+    inp.style.borderColor=v>0?'#86efac':'#fca5a5';
+    toast('✓ '+(p.nombre||'').substring(0,28)+': S/ '+v.toFixed(2),'ok');
+    dispararCadena();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
+
+// ══════════════════════════════════════════════════════════
+//  MOTOR DE COSTOS
+//  Materia prima -> granel -> producto -> kit
+//  Regla de protección: el costo de un producto solo se
+//  reemplaza por el de su receta si la receta está COMPLETA
+//  (todos sus componentes tienen costo). Si no, se conserva
+//  el costo manual que tenga, para no pisarlo con un valor
+//  subestimado.
+// ══════════════════════════════════════════════════════════
+function tieneReceta(pid){ return recetas.some(function(r){return r.producto_id===pid;}); }
+function costoGranelInfo(gid){
+  var recs=recetasGranel.filter(function(r){return r.granel_id===gid;});
+  var c=0, faltan=[];
+  recs.forEach(function(r){
+    var mp=materias.find(function(m){return m.id===r.materia_prima_id;});
+    var cu=mp?parseFloat(mp.costo_unitario||0):0;
+    if(!(cu>0)) faltan.push(mp?mp.nombre:'insumo desconocido');
+    c+=cu*parseFloat(r.cantidad||0);
+  });
+  return {costo:c, completo:recs.length>0&&!faltan.length, faltan:faltan, tieneReceta:recs.length>0};
+}
+function costoRecetaProd(pid){
+  var recs=recetas.filter(function(r){return r.producto_id===pid;});
+  var c=0, faltan=[];
+  recs.forEach(function(r){
+    var q=parseFloat(r.cantidad||0), cu=0, nom='?';
+    if(r.producto_componente_id){
+      var p=prods.find(function(x){return x.id===r.producto_componente_id;});
+      nom=p?p.nombre:'producto desconocido'; cu=p?parseFloat(p.costo||0):0;
+    } else if(r.granel_id){
+      var g=graneles.find(function(x){return x.id===r.granel_id;});
+      nom=g?g.nombre:'granel desconocido'; cu=g?parseFloat(g.costo_unitario||0):0;
+      if(g){ var gi=costoGranelInfo(g.id); if(gi.tieneReceta&&!gi.completo){ faltan.push(nom+' (le falta costo a: '+gi.faltan.join(', ')+')'); c+=cu*q; return; } }
+    } else if(r.materia_prima_id){
+      var m=materias.find(function(x){return x.id===r.materia_prima_id;});
+      nom=m?m.nombre:'insumo desconocido'; cu=m?parseFloat(m.costo_unitario||0):0;
+    }
+    if(!(cu>0)) faltan.push(nom);
+    c+=cu*q;
+  });
+  return {costo:c, completo:recs.length>0&&!faltan.length, faltan:faltan};
+}
+// Compatibilidad: devuelve el costo solo si la receta está completa (si no, 0)
+function calcularCostoProducto(prodId){
+  var r=costoRecetaProd(prodId);
+  return r.completo?r.costo:0;
+}
+// ¿El producto 'pid' contiene (directa o indirectamente) a 'buscado'? Evita ciclos en kits.
+function contieneProducto(pid,buscado,visit){
+  visit=visit||{};
+  if(visit[pid]) return false; visit[pid]=1;
+  return recetas.filter(function(r){return r.producto_id===pid&&r.producto_componente_id;}).some(function(r){
+    return r.producto_componente_id===buscado||contieneProducto(r.producto_componente_id,buscado,visit);
+  });
+}
+// Costo a usar para una línea de venta: el congelado si existe; si no, el actual
+function _costoLinea(d){
+  if(d&&d.costo_unitario!=null&&d.costo_unitario!==''&&parseFloat(d.costo_unitario)>0) return parseFloat(d.costo_unitario);
+  var p=prods.find(function(x){return x.id===(d&&d.producto_id);});
+  return p?parseFloat(p.costo||0):0;
+}
+
+var _cadenaCorriendo=false, _cadenaPendiente=false;
+async function recalcularCadenaCostos(silencioso){
+  if(_cadenaCorriendo){ _cadenaPendiente=true; return 0; }
+  _cadenaCorriendo=true;
+  var cambios=0;
+  try{
+    // 1) Graneles: costo = suma de sus insumos
+    for(var i=0;i<graneles.length;i++){
+      var g=graneles[i], gi=costoGranelInfo(g.id);
+      if(!gi.tieneReceta) continue;
+      if(Math.abs(gi.costo-parseFloat(g.costo_unitario||0))>0.0001){
+        await sbUpd('graneles',g.id,{costo_unitario:gi.costo}); g.costo_unitario=gi.costo; cambios++;
+      }
+    }
+    // 2) Productos con receta completa. Varias pasadas por los kits (kit de kit).
+    for(var pasada=0;pasada<6;pasada++){
+      var hubo=false;
+      for(var j=0;j<prods.length;j++){
+        var p=prods[j];
+        if(!tieneReceta(p.id)) continue;
+        var r=costoRecetaProd(p.id);
+        if(!r.completo) continue;
+        if(Math.abs(r.costo-parseFloat(p.costo||0))>0.0001){
+          await sbUpd('productos',p.id,{costo:_r4(r.costo)}); p.costo=_r4(r.costo); hubo=true; cambios++;
+        }
+      }
+      if(!hubo) break;
+    }
+    if(!silencioso) toast(cambios?('✓ Costos actualizados ('+cambios+' cambio'+(cambios===1?'':'s')+')'):'Los costos ya estaban al día','ok');
+    if(!silencioso&&document.getElementById('stock-costos')&&document.getElementById('stock-costos').style.display==='block') renderCostos();
+  }catch(e){ toast('Error recalculando costos: '+e.message,'err'); }
+  finally{
+    _cadenaCorriendo=false;
+    if(_cadenaPendiente){ _cadenaPendiente=false; recalcularCadenaCostos(true); }
+  }
+  return cambios;
+}
+// Disparo en segundo plano tras un cambio (no bloquea al usuario)
+function dispararCadena(){ setTimeout(function(){ recalcularCadenaCostos(true); },300); }
+// Se mantiene el nombre anterior por compatibilidad
+async function actualizarCostosProductos(){ return recalcularCadenaCostos(false); }
 
 // ── 3. ALERTA EN PEDIDO SI NO HAY STOCK ──
 function checkStockProducto(prodId, qty){
@@ -5945,6 +6252,11 @@ function calcularProduccionProd(){
       nombre=g?'🧪 '+g.nombre:'?';
       disponible=g?parseFloat(g.stock_actual||0):0;
       unidad=g?g.unidad||'LT':'LT';
+    } else if(r.producto_componente_id){
+      var pk=prods.find(function(x){return x.id===r.producto_componente_id;});
+      nombre=pk?'🔗 '+pk.nombre:'?';
+      disponible=pk?parseFloat(pk.stock_actual||0):0;
+      unidad=pk?pk.unidad||'UND':'UND';
     } else {
       var mp=materias.find(function(m){return m.id===r.materia_prima_id;});
       nombre=mp?'📦 '+mp.nombre:'?';
@@ -6068,6 +6380,12 @@ async function emitirOP(tipo,destinoId,cantidad){
           nombre:g2.nombre||r.granel_id,unidad:g2.unidad||'LT',
           cant_teorica:parseFloat(r.cantidad||0)*cantidad,
           costo_unitario:parseFloat(g2.costo_unitario||0)});
+      } else if(r.producto_componente_id){
+        var pk2=prods.find(function(x){return x.id===r.producto_componente_id;})||{};
+        comps.push({materia_prima_id:null,granel_id:null,producto_id:r.producto_componente_id,
+          nombre:pk2.nombre||r.producto_componente_id,unidad:pk2.unidad||'UND',
+          cant_teorica:parseFloat(r.cantidad||0)*cantidad,
+          costo_unitario:parseFloat(pk2.costo||0)});
       } else {
         var m2=materias.find(function(x){return x.id===r.materia_prima_id;})||{};
         comps.push({materia_prima_id:r.materia_prima_id,granel_id:null,
@@ -6162,9 +6480,10 @@ function opRenderDets(soloLectura){
     var dif=parseFloat(real||0)-parseFloat(d.cant_teorica||0);
     var avi=Math.abs(dif)>0.0001?('<span style="color:'+(dif>0?'#b91c1c':'#b45309')+';font-weight:800;"> ('+(dif>0?'+':'')+dif.toFixed(3)+')</span>'):'';
     var disp=null;
-    if(d.granel_id){ var gg=graneles.find(function(x){return x.id===d.granel_id;}); if(gg) disp=parseFloat(gg.stock_actual||0); }
+    if(d.producto_id){ var pp=prods.find(function(x){return x.id===d.producto_id;}); if(pp) disp=parseFloat(pp.stock_actual||0); }
+    else if(d.granel_id){ var gg=graneles.find(function(x){return x.id===d.granel_id;}); if(gg) disp=parseFloat(gg.stock_actual||0); }
     else if(d.materia_prima_id){ var mm=materias.find(function(x){return x.id===d.materia_prima_id;}); if(mm) disp=parseFloat(mm.stock_actual||0); }
-    var comp=comprometido(d.granel_id?'granel':'materia',d.granel_id||d.materia_prima_id);
+    var comp=d.producto_id?0:comprometido(d.granel_id?'granel':'materia',d.granel_id||d.materia_prima_id);
     var libre=disp!=null?(disp-comp+parseFloat(d.cant_teorica||0)):null;
     var falta=(libre!=null&&libre<parseFloat(d.cant_teorica||0))
       ? '<div style="font-size:.68rem;color:#b91c1c;font-weight:800;margin-top:3px;">⚠️ Stock insuficiente: quedan '+libre.toFixed(2)+' '+(d.unidad||'')+' libres</div>' : '';
@@ -6206,7 +6525,15 @@ async function liquidarOP(){
       var d=opDets[i];
       var usado=d.cant_real!=null?parseFloat(d.cant_real):parseFloat(d.cant_teorica||0);
       if(!(usado>0)) continue;
-      if(d.granel_id){
+      if(d.producto_id){
+        var pc=prods.find(function(x){return x.id===d.producto_id;});
+        if(pc){
+          var npc=Math.max(0,parseFloat(pc.stock_actual||0)-usado);
+          await sbUpd('productos',d.producto_id,{stock_actual:npc}); pc.stock_actual=npc;
+          await sbIns('movimientos_stock',{id:gid(),tipo:'SALIDA',referencia:ref,
+            producto_id:d.producto_id,cantidad:usado,nota:'Armado '+ref,fecha:f,lote:d.lote_insumo||null,op_id:opActual.id});
+        }
+      } else if(d.granel_id){
         var g=graneles.find(function(x){return x.id===d.granel_id;});
         if(g){
           var ng=Math.max(0,parseFloat(g.stock_actual||0)-usado);
@@ -6802,7 +7129,9 @@ saveMP2=async function(){
       fecha:hoy()
     }).catch(function(){});
   }
+  var _cambioCosto=mp&&Math.abs(parseFloat(mp.costo_unitario||0)-nuevoCosto)>0.001;
   await _saveMP2Old();
+  if(_cambioCosto) dispararCadena();
 };
 
 // ── ACTUALIZAR saveMov PARA INCLUIR MERMA ────────────────
@@ -7489,7 +7818,8 @@ guardar=async function(){
       return{id:gid(),venta_id:vid,producto_id:item.id,
         cantidad:item.qty,precio_base:item.precioBase,
         precio_final:item.precio,total:item.precio*item.qty,
-        comision:item.comision*item.qty};
+        comision:item.comision*item.qty,
+        costo_unitario:(function(){var p=prods.find(function(x){return x.id===item.id;});var c=p?parseFloat(p.costo||0):0;return c>0?c:null;})()};
     });
     var abonosArr=ab0>0?[{id:gid(),venta_id:vid,monto:ab0,fecha:ab0f||hoy()}]:[];
 
@@ -8391,123 +8721,113 @@ async function ejecutarExportExcel(){
   var inclAnuladas=document.getElementById('exp-anuladas').checked;
   var inclVentas=document.getElementById('exp-ventas').checked;
   var inclDetalle=document.getElementById('exp-detalle').checked;
+  var inclPagos=document.getElementById('exp-pagos').checked;
+  if(!inclVentas&&!inclDetalle&&!inclPagos){toast('Selecciona al menos una opción','err');return;}
 
-  if(!inclVentas&&!inclDetalle){toast('Selecciona al menos una opción','err');return;}
-  toast('Generando Excel...','');
+  var meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var mesN=parseInt(document.getElementById('export-mes').value);
+  var anioN=parseInt(document.getElementById('export-anio').value);
+  var desde=document.getElementById('export-desde').value;
+  var hasta=document.getElementById('export-hasta').value;
+  var label = periodo==='mes' ? (meses[mesN-1]+'_'+anioN)
+            : periodo==='rango' ? (desde+'_al_'+hasta) : 'Historial_completo';
 
-  // Filtrar ventas por período
+  // ¿Una fecha cae dentro del período elegido?
+  function enPeriodo(f){
+    if(periodo==='todo') return true;
+    if(!f) return false;
+    if(periodo==='mes'){ var p=String(f).split('-'); return p.length===3&&parseInt(p[1])===mesN&&parseInt(p[0])===anioN; }
+    return f>=desde&&f<=hasta;
+  }
+
   var ventasFilt=ventas.filter(function(v){
     if(!inclAnuladas&&v.estado==='ANULADO') return false;
-    if(periodo==='todo') return true;
-    var fecha=v.fecha||'';
-    if(!fecha) return false;
-    if(periodo==='mes'){
-      var mes=parseInt(document.getElementById('export-mes').value);
-      var anio=parseInt(document.getElementById('export-anio').value);
-      // Parsear fecha manualmente para evitar problemas de timezone
-      var parts=fecha.split('-');
-      if(parts.length===3){
-        return parseInt(parts[1])===mes&&parseInt(parts[0])===anio;
-      }
-      return false;
-    }
-    if(periodo==='rango'){
-      var desde=document.getElementById('export-desde').value;
-      var hasta=document.getElementById('export-hasta').value;
-      return fecha>=desde&&fecha<=hasta;
-    }
-    return true;
+    return enPeriodo(v.fecha||'');
   });
 
-  if(!ventasFilt.length){
-    toast('No hay ventas en el período seleccionado','err');
-    return;
-  }
-
-  var NL=String.fromCharCode(10);
-  function toCSV(rows){
-    return rows.map(function(r){
-      return r.map(function(val){
-        return '"'+String(val==null?'':val).replace(/"/g,'""')+'"';
-      }).join(',');
-    }).join(NL);
-  }
-
-  // Etiqueta del período
-  var meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  var label='';
-  if(periodo==='mes'){
-    label=meses[parseInt(document.getElementById('export-mes').value)-1]+'_'+document.getElementById('export-anio').value;
-  } else if(periodo==='rango'){
-    label=document.getElementById('export-desde').value+'_al_'+document.getElementById('export-hasta').value;
-  } else {
-    label='Historial_completo';
-  }
-
-  var bom='﻿';
-  var delay=0;
-
-  // CSV 1: Ventas resumen
-  if(inclVentas){
-    var ventasRows=[['ID','FECHA','CLIENTE','RUC','VENDEDOR','FORMA_PAGO','COMPROBANTE','ESTADO','TOTAL','ABONADO','PENDIENTE','FECHA_ENTREGA','FECHA_PAGO_REAL','OBSERVACIONES']];
-    ventasFilt.forEach(function(v){
-      var c=clis.find(function(x){return x.id===v.cliente_id;});
-      var ab=getAb(v.id);
-      ventasRows.push([
-        v.id, v.fecha||'',
-        c?c.nombres||c.alias||'':'',
-        c?c.dni_ruc||'':'',
-        v.vendedor||'', v.forma_pago||'', v.comprobante||'', v.estado||'',
-        parseFloat(v.total||0).toFixed(2),
-        ab.toFixed(2),
-        (parseFloat(v.total||0)-ab).toFixed(2),
-        v.fecha_entrega||'', v.fecha_pago_real||'',
-        (v.observaciones||'').replace(/,/g,';')
-      ]);
-    });
-    setTimeout(function(){
-      var blob=new Blob([bom+toCSV(ventasRows)],{type:'text/csv;charset=utf-8;'});
-      var url=URL.createObjectURL(blob);
-      var a=document.createElement('a');
-      a.href=url; a.download='Frostech_Ventas_'+label+'.csv';
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a); URL.revokeObjectURL(url);
-    }, delay);
-    delay+=600;
-  }
-
-  // CSV 2: Detalle ventas
-  if(inclDetalle){
+  toast('Generando Excel...','ok');
+  try{
     var allDets=await sbGet('detalle_ventas');
-    var idsVentas=ventasFilt.map(function(v){return v.id;});
-    var detsFilt=allDets.filter(function(d){return idsVentas.indexOf(d.venta_id)>=0;});
-    var detRows=[['ID','VENTA_ID','FECHA','CLIENTE','VENDEDOR','PRODUCTO','CATEGORIA','CANTIDAD','PRECIO_BASE','PRECIO_FINAL','TOTAL','COMISION']];
-    detsFilt.forEach(function(d){
-      var v=ventas.find(function(x){return x.id===d.venta_id;});
-      var c=v?clis.find(function(x){return x.id===v.cliente_id;}):null;
-      var pr=prods.find(function(x){return x.id===d.producto_id;});
-      detRows.push([
-        d.id, d.venta_id,
-        v?v.fecha||'':'',
-        c?c.nombres||c.alias||'':'',
-        v?v.vendedor||'':'',
-        pr?pr.nombre||d.producto_id:d.producto_id||'',
-        pr?pr.categoria||'':'',
-        d.cantidad, d.precio_base, d.precio_final, d.total, d.comision
-      ]);
-    });
-    setTimeout(function(){
-      var blob=new Blob([bom+toCSV(detRows)],{type:'text/csv;charset=utf-8;'});
-      var url=URL.createObjectURL(blob);
-      var a=document.createElement('a');
-      a.href=url; a.download='Frostech_Detalle_'+label+'.csv';
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a); URL.revokeObjectURL(url);
-    }, delay);
-  }
+    var allAb=await sbGet('abonos');
+    _ensureXLSX(function(){
+      try{
+        var wb=XLSX.utils.book_new();
+        function hoja(nombre,aoa,anchos){
+          var ws=XLSX.utils.aoa_to_sheet(aoa);
+          ws['!cols']=anchos.map(function(w){return {wch:w};});
+          if(aoa.length>1) ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:0,c:aoa[0].length-1}})};
+          ws['!freeze']={xSplit:0,ySplit:1};
+          XLSX.utils.book_append_sheet(wb,ws,nombre);
+        }
+        function abDe(vid){ return allAb.filter(function(a){return a.venta_id===vid;}); }
+        function pagado(vid){ return abDe(vid).reduce(function(s,a){return s+parseFloat(a.monto||0);},0); }
 
-  document.getElementById('MEXPORT').classList.remove('open');
-  toast('✅ '+ventasFilt.length+' ventas exportadas — '+label,'ok');
+        // ── Ventas ──
+        if(inclVentas){
+          var vr=[['Nº venta','Fecha venta','Cliente','RUC/DNI','Vendedor','Forma de pago','Comprobante',
+                   'Estado','Estado despacho','Total facturado S/','Pagado real S/','Saldo por cobrar S/',
+                   'Estado de pago','Nº de pagos','Último pago','F. estimada pago','F. entrega','Observaciones']];
+          ventasFilt.forEach(function(v){
+            var c=clis.find(function(x){return x.id===v.cliente_id;});
+            var ab=abDe(v.id), pg=ab.reduce(function(s,a){return s+parseFloat(a.monto||0);},0);
+            var tot=parseFloat(v.total||0);
+            var ult=ab.map(function(a){return a.fecha||'';}).sort().slice(-1)[0]||'';
+            vr.push([v.id,v.fecha||'',c?(c.nombres||c.alias||''):'',c?(c.dni_ruc||''):'',
+              v.vendedor||'',v.forma_pago||'',v.comprobante||'',v.estado||'',v.estado_despacho||'',
+              _r4(tot),_r4(pg),_r4(tot-pg),getPS(tot,pg).toUpperCase(),ab.length,ult,
+              v.fecha_estimada_pago||'',v.fecha_entrega||'',(v.observaciones||'')]);
+          });
+          hoja('Ventas',vr,[12,12,32,13,11,13,13,12,15,16,14,16,13,10,12,15,12,40]);
+        }
+
+        // ── Pagos: el dinero realmente recibido, por fecha de cobro ──
+        if(inclPagos){
+          var pr=[['Fecha del pago','Monto pagado S/','Nº venta','Fecha venta','Cliente','RUC/DNI','Vendedor',
+                   'Forma de pago','Comprobante','Total de la venta S/','Pago nº','Pagado acumulado S/','Saldo S/','Estado de pago']];
+          var pagos=allAb.filter(function(a){ return enPeriodo(a.fecha||''); });
+          pagos.sort(function(a,b){ return (a.fecha||'')<(b.fecha||'')?-1:1; });
+          var totPagos=0;
+          pagos.forEach(function(a){
+            var v=ventas.find(function(x){return x.id===a.venta_id;});
+            if(v&&!inclAnuladas&&v.estado==='ANULADO') return;
+            var c=v?clis.find(function(x){return x.id===v.cliente_id;}):null;
+            var hermanos=abDe(a.venta_id).sort(function(x,y){return (x.fecha||'')<(y.fecha||'')?-1:1;});
+            var idx=hermanos.findIndex(function(x){return x.id===a.id;})+1;
+            var tot=v?parseFloat(v.total||0):0, acum=pagado(a.venta_id);
+            var monto=parseFloat(a.monto||0); totPagos+=monto;
+            pr.push([a.fecha||'',_r4(monto),a.venta_id,v?(v.fecha||''):'',
+              c?(c.nombres||c.alias||''):'',c?(c.dni_ruc||''):'',v?(v.vendedor||''):'',
+              v?(v.forma_pago||''):'',v?(v.comprobante||''):'',_r4(tot),
+              idx+' de '+hermanos.length,_r4(acum),_r4(tot-acum),getPS(tot,acum).toUpperCase()]);
+          });
+          pr.push([]);
+          pr.push(['TOTAL COBRADO EN EL PERÍODO',_r4(totPagos)]);
+          hoja('Pagos recibidos',pr,[15,16,12,12,32,13,11,13,13,18,10,18,12,14]);
+        }
+
+        // ── Detalle por producto ──
+        if(inclDetalle){
+          var ids={}; ventasFilt.forEach(function(v){ ids[v.id]=1; });
+          var dr=[['Nº venta','Fecha venta','Cliente','Vendedor','Producto','Categoría','Cantidad',
+                   'Precio lista S/','Precio vendido S/','Total línea S/','Costo unit. S/','Comisión S/']];
+          allDets.filter(function(d){return ids[d.venta_id];}).forEach(function(d){
+            var v=ventas.find(function(x){return x.id===d.venta_id;});
+            var c=v?clis.find(function(x){return x.id===v.cliente_id;}):null;
+            var p=prods.find(function(x){return x.id===d.producto_id;});
+            dr.push([d.venta_id,v?(v.fecha||''):'',c?(c.nombres||c.alias||''):'',v?(v.vendedor||''):'',
+              p?(p.nombre||d.producto_id):d.producto_id,p?(p.categoria||''):'',
+              parseFloat(d.cantidad||0),_r4(d.precio_base),_r4(d.precio_final),_r4(d.total),
+              _r4(_costoLinea(d)),_r4(d.comision)]);
+          });
+          hoja('Detalle por producto',dr,[12,12,32,11,36,13,9,15,16,14,14,11]);
+        }
+
+        XLSX.writeFile(wb,'Ventas_y_Pagos_'+label+'.xlsx');
+        document.getElementById('MEXPORT').classList.remove('open');
+        toast('✓ '+ventasFilt.length+' ventas exportadas — '+label,'ok');
+      }catch(e){ toast('Error al generar: '+e.message,'err'); }
+    });
+  }catch(e){ toast('Error: '+e.message,'err'); }
 }
 
 initLogin();
