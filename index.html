@@ -660,12 +660,14 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="tab" onclick="dashTab('despachos')" id="dtab-despachos" style="white-space:nowrap;">Despachos</div>
     <div class="tab" onclick="dashTab('comisiones')" id="dtab-comisiones" style="white-space:nowrap;">Comisiones</div>
     <div class="tab" onclick="dashTab('utilidad')" id="dtab-utilidad" style="white-space:nowrap;">💰 Utilidad</div>
+    <div class="tab" onclick="dashTab('caja')" id="dtab-caja" style="white-space:nowrap;">🏦 Caja</div>
   </div>
   <div class="scroll">
     <div id="dash-resumen"></div>
     <div id="dash-despachos" style="display:none"></div>
     <div id="dash-comisiones" style="display:none"></div>
     <div id="dash-utilidad" style="display:none"></div>
+    <div id="dash-caja" style="display:none"></div>
   </div>
 </div>
 
@@ -1357,6 +1359,32 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 </div>
 
 <!-- MODAL EDITAR VENTA -->
+<div class="mo" id="MCAJA" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="mtit" id="mcaja-tit">Movimiento de caja</div>
+    <input type="hidden" id="mcaja-tipo">
+    <div class="fg"><label>Fecha</label>
+      <input type="date" id="mcaja-fecha" style="width:100%;padding:10px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.9rem;outline:none;box-sizing:border-box;">
+    </div>
+    <div class="fg"><label>Categor&iacute;a</label>
+      <select class="msel" id="mcaja-cat"></select>
+    </div>
+    <div class="fg" id="mcaja-prov-fg"><label>Proveedor (opcional)</label>
+      <select class="msel" id="mcaja-prov"></select>
+    </div>
+    <div class="fg"><label>Monto S/</label>
+      <input type="number" step="0.01" min="0" id="mcaja-monto" style="width:100%;padding:10px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:1rem;font-weight:800;outline:none;box-sizing:border-box;">
+    </div>
+    <div class="fg"><label>Descripci&oacute;n</label>
+      <input type="text" id="mcaja-desc" placeholder="Ej.: pago factura 001-234" style="width:100%;padding:10px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.9rem;outline:none;box-sizing:border-box;">
+    </div>
+    <div class="fg"><label>N&ordm; de operaci&oacute;n (opcional)</label>
+      <input type="text" id="mcaja-ref" placeholder="Voucher o c&oacute;digo del BCP" style="width:100%;padding:10px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.9rem;outline:none;box-sizing:border-box;">
+    </div>
+    <button onclick="saveMovCaja()" id="btnMCAJA" style="width:100%;padding:13px;background:var(--a);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.9rem;font-weight:800;cursor:pointer;">&#128190; Guardar</button>
+  </div>
+</div>
 <div class="mo" id="MOP" onclick="if(event.target===this)cerrarOP()">
   <div class="modal">
     <div class="mh"></div>
@@ -2994,7 +3022,7 @@ function getLocation(){
 
 // ── DASHBOARD TABS ────────────────────────────────────────
 function dashTab(t){
-  const ids=['resumen','despachos','comisiones','utilidad'];
+  const ids=['resumen','despachos','comisiones','utilidad','caja'];
   ids.forEach(x=>{
     const el=document.getElementById('dash-'+x);
     const tab=document.getElementById('dtab-'+x);
@@ -3005,6 +3033,7 @@ function dashTab(t){
   if(t==='resumen') renderDash();
   if(t==='comisiones') renderComisiones();
   if(t==='utilidad') renderUtilidad();
+  if(t==='caja') renderCaja();
 }
 
 
@@ -3012,6 +3041,243 @@ function dashTab(t){
 //  UTILIDAD (ESTADO DE RESULTADOS) + GASTOS
 // ════════════════════════════════════════════════════════════
 var gastos=[];
+
+// ══════════════════════════════════════════════════════════
+//  CAJA / FLUJO DE EFECTIVO  (una sola cuenta: BCP + Yape)
+//  No duplica datos: los cobros vienen de `abonos`, los
+//  gastos de `gastos`, y esta tabla guarda lo demás.
+// ══════════════════════════════════════════════════════════
+var cajaMovs=[], cajaMes=null, cajaAnio=null;
+var CAJA_CATS_IN =['Saldo inicial','Aporte de socio','Préstamo recibido','Devolución','Otro ingreso'];
+var CAJA_CATS_OUT=['Pago a proveedor','Retiro de socio','Pago de préstamo','Impuestos','Comisión bancaria','Otro egreso'];
+
+async function cargarCaja(){
+  try{ cajaMovs=await sbGet('caja_movimientos','?order=fecha.asc')||[]; }
+  catch(e){ cajaMovs=null; }
+}
+function cajaCambiarMes(d){
+  cajaMes+=d; if(cajaMes<1){cajaMes=12;cajaAnio--;} if(cajaMes>12){cajaMes=1;cajaAnio++;}
+  renderCaja();
+}
+function cajaIrHoy(){ var n=new Date(); cajaMes=n.getMonth()+1; cajaAnio=n.getFullYear(); renderCaja(); }
+function _mesStr(m,a){ return a+'-'+String(m).padStart(2,'0'); }
+
+// Todos los movimientos de caja, vengan de donde vengan
+function _todosMovsCaja(){
+  var out=[];
+  (abonos||[]).forEach(function(a){
+    var v=ventas.find(function(x){return x.id===a.venta_id;});
+    if(v&&v.estado==='ANULADO') return;
+    var c=v?clis.find(function(x){return x.id===v.cliente_id;}):null;
+    out.push({fecha:a.fecha||'',tipo:'ENTRADA',cat:'Cobro a cliente',
+      desc:(c?(c.nombres||c.alias||''):'Cliente')+(v?(' · venta '+v.id):''),
+      monto:parseFloat(a.monto||0),origen:'abono',id:a.id,ref:a.referencia||''});
+  });
+  (gastos||[]).forEach(function(g){
+    out.push({fecha:g.fecha||'',tipo:'SALIDA',cat:g.categoria||'Gasto',
+      desc:g.descripcion||'',monto:parseFloat(g.monto||0),origen:'gasto',id:g.id,ref:''});
+  });
+  (cajaMovs||[]).forEach(function(m){
+    var p=m.proveedor_id?proveedores.find(function(x){return x.id===m.proveedor_id;}):null;
+    out.push({fecha:m.fecha||'',tipo:m.tipo,cat:m.categoria||'',
+      desc:(m.descripcion||'')+(p?(' · '+p.nombre):''),monto:parseFloat(m.monto||0),
+      origen:'caja',id:m.id,ref:m.referencia||''});
+  });
+  out.sort(function(a,b){ return (a.fecha||'')<(b.fecha||'')?-1:((a.fecha||'')>(b.fecha||'')?1:0); });
+  return out;
+}
+function _efecto(m){ return m.tipo==='ENTRADA'?m.monto:-m.monto; }
+
+async function renderCaja(){
+  var el=document.getElementById('dash-caja'); if(!el) return;
+  if(cajaMes===null){ var n=new Date(); cajaMes=n.getMonth()+1; cajaAnio=n.getFullYear(); }
+  if(cajaMovs===null||cajaMovs.length===0){ await cargarCaja(); }
+  if(cajaMovs===null){
+    el.innerHTML='<div class="empty"><p>Para usar Caja, crea la tabla <b>caja_movimientos</b> en Supabase (script 17).</p></div>';
+    return;
+  }
+  if(!gastos||!gastos.length){ try{ gastos=await sbGet('gastos','?order=fecha.desc')||[]; }catch(e){ gastos=[]; } }
+
+  var todos=_todosMovsCaja();
+  var mes=_mesStr(cajaMes,cajaAnio);
+  var previos=todos.filter(function(m){ return (m.fecha||'')<mes+'-01'; });
+  var saldoIni=previos.reduce(function(s,m){ return s+_efecto(m); },0);
+  var delMes=todos.filter(function(m){ return (m.fecha||'').substring(0,7)===mes; });
+  var ent=delMes.filter(function(m){return m.tipo==='ENTRADA';}).reduce(function(s,m){return s+m.monto;},0);
+  var sal=delMes.filter(function(m){return m.tipo==='SALIDA';}).reduce(function(s,m){return s+m.monto;},0);
+  var saldoFin=saldoIni+ent-sal;
+  var meses=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SETIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+
+  var h='<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">'
+    +'<button onclick="cajaCambiarMes(-1)" style="width:42px;height:42px;border-radius:12px;border:1.5px solid var(--bdr);background:#fff;color:var(--p);font-size:1.5rem;font-weight:900;cursor:pointer;flex-shrink:0;">‹</button>'
+    +'<div onclick="cajaIrHoy()" style="flex:1;text-align:center;cursor:pointer;"><div style="font-size:1rem;font-weight:900;">🏦 '+meses[cajaMes-1]+' '+cajaAnio+'</div>'
+    +'<div style="font-size:.66rem;color:var(--mu);">cuenta BCP (incluye Yape)</div></div>'
+    +'<button onclick="cajaCambiarMes(1)" style="width:42px;height:42px;border-radius:12px;border:1.5px solid var(--bdr);background:#fff;color:var(--p);font-size:1.5rem;font-weight:900;cursor:pointer;flex-shrink:0;">›</button></div>';
+
+  h+='<div style="background:linear-gradient(135deg,#0ea5e9,#0369a1);border-radius:16px;padding:16px;color:#fff;margin-bottom:12px;">'
+    +'<div style="font-size:.7rem;opacity:.85;font-weight:700;">SALDO AL CIERRE DEL MES</div>'
+    +'<div style="font-size:1.9rem;font-weight:900;line-height:1.1;margin:2px 0 10px;">S/ '+saldoFin.toFixed(2)+'</div>'
+    +'<div style="display:flex;gap:14px;font-size:.74rem;">'
+    +'<div><div style="opacity:.8;">Saldo inicial</div><b>S/ '+saldoIni.toFixed(2)+'</b></div>'
+    +'<div><div style="opacity:.8;">Entradas</div><b>+ '+ent.toFixed(2)+'</b></div>'
+    +'<div><div style="opacity:.8;">Salidas</div><b>− '+sal.toFixed(2)+'</b></div>'
+    +'</div></div>';
+
+  h+='<div style="display:flex;gap:8px;margin-bottom:12px;">'
+    +'<button onclick="abrirMovCaja(\'ENTRADA\')" style="flex:1;padding:10px;background:#dcfce7;color:#166534;border:none;border-radius:11px;font-family:inherit;font-size:.78rem;font-weight:800;cursor:pointer;">+ Entrada</button>'
+    +'<button onclick="abrirMovCaja(\'SALIDA\')" style="flex:1;padding:10px;background:#fee2e2;color:#b91c1c;border:none;border-radius:11px;font-family:inherit;font-size:.78rem;font-weight:800;cursor:pointer;">− Salida</button>'
+    +'<button onclick="exportCajaExcel()" style="flex:1;padding:10px;background:#16a34a;color:#fff;border:none;border-radius:11px;font-family:inherit;font-size:.78rem;font-weight:800;cursor:pointer;">📊 Excel</button>'
+    +'</div>';
+
+  // Resumen por categoría
+  var porCat={};
+  delMes.forEach(function(m){ var k=m.tipo+'|'+m.cat; porCat[k]=(porCat[k]||0)+m.monto; });
+  var cats=Object.keys(porCat).sort(function(a,b){return porCat[b]-porCat[a];});
+  if(cats.length){
+    h+='<div style="background:var(--card);border-radius:14px;padding:12px;margin-bottom:12px;">'
+      +'<div style="font-size:.72rem;font-weight:900;color:var(--mu);margin-bottom:8px;">POR CATEGORÍA</div>'
+      +cats.map(function(k){
+        var p=k.split('|'), esIn=p[0]==='ENTRADA';
+        return '<div style="display:flex;justify-content:space-between;font-size:.8rem;padding:4px 0;">'
+          +'<span>'+(esIn?'↓ ':'↑ ')+p[1]+'</span>'
+          +'<b style="color:'+(esIn?'#16a34a':'#b91c1c')+';">'+(esIn?'+':'−')+' S/ '+porCat[k].toFixed(2)+'</b></div>';
+      }).join('')+'</div>';
+  }
+
+  // Movimientos con saldo corrido
+  h+='<div style="font-size:.72rem;font-weight:900;color:var(--mu);margin-bottom:6px;">MOVIMIENTOS DEL MES ('+delMes.length+')</div>';
+  if(!delMes.length){
+    h+='<div class="empty"><p>Sin movimientos este mes.</p></div>';
+  } else {
+    var saldo=saldoIni;
+    h+=delMes.map(function(m){
+      saldo+=_efecto(m);
+      var esIn=m.tipo==='ENTRADA';
+      var borrable=m.origen==='caja';
+      return '<div class="stock-card" style="padding:10px 12px;align-items:center;">'
+        +'<div class="stock-info" style="min-width:0;">'
+        +'<div class="stock-nombre" style="font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(m.desc||m.cat)+'</div>'
+        +'<div class="stock-unidad">'+m.fecha+' · '+m.cat+(m.ref?(' · '+m.ref):'')+'</div></div>'
+        +'<div style="text-align:right;flex-shrink:0;">'
+        +'<div style="font-size:.88rem;font-weight:900;color:'+(esIn?'#16a34a':'#b91c1c')+';">'+(esIn?'+':'−')+' '+m.monto.toFixed(2)+'</div>'
+        +'<div style="font-size:.64rem;color:var(--mu);">saldo '+saldo.toFixed(2)+'</div></div>'
+        +(borrable?'<button onclick="deleteMovCaja(\''+m.id+'\')" style="background:none;border:none;color:var(--mu);font-size:1rem;cursor:pointer;margin-left:6px;">🗑</button>':'')
+        +'</div>';
+    }).join('');
+  }
+  h+='<div style="font-size:.66rem;color:var(--mu);margin-top:10px;">Los cobros a clientes y los gastos entran solos. Aquí se agregan los pagos a proveedores, aportes, retiros y el saldo inicial.</div>';
+  el.innerHTML=h;
+}
+
+
+// ── Excel de flujo de caja ────────────────────────────────
+function exportCajaExcel(){
+  toast('Generando flujo de caja...','ok');
+  _ensureXLSX(function(){
+    try{
+      var todos=_todosMovsCaja();
+      if(!todos.length){ toast('No hay movimientos','err'); return; }
+
+      // Hoja 1: movimientos con saldo corrido (todo el histórico)
+      var saldo=0;
+      var mv=[['Fecha','Tipo','Categoría','Descripción','Nº operación','Entrada S/','Salida S/','Saldo S/','Origen']];
+      todos.forEach(function(m){
+        saldo+=_efecto(m);
+        mv.push([m.fecha,m.tipo,m.cat,m.desc,m.ref,
+          m.tipo==='ENTRADA'?_r4(m.monto):'',m.tipo==='SALIDA'?_r4(m.monto):'',_r4(saldo),
+          m.origen==='abono'?'Cobro de venta':(m.origen==='gasto'?'Gasto':'Registro manual')]);
+      });
+
+      // Hoja 2: flujo mes a mes
+      var M={};
+      todos.forEach(function(m){
+        var k=(m.fecha||'').substring(0,7); if(!k) return;
+        if(!M[k]) M[k]={e:0,s:0};
+        if(m.tipo==='ENTRADA') M[k].e+=m.monto; else M[k].s+=m.monto;
+      });
+      var acum=0;
+      var fl=[['Mes','Entradas S/','Salidas S/','Flujo neto S/','Saldo acumulado S/']];
+      Object.keys(M).sort().forEach(function(k){
+        var neto=M[k].e-M[k].s; acum+=neto;
+        fl.push([k,_r4(M[k].e),_r4(M[k].s),_r4(neto),_r4(acum)]);
+      });
+
+      // Hoja 3: por categoría y mes
+      var C={};
+      todos.forEach(function(m){
+        var k=(m.fecha||'').substring(0,7); if(!k) return;
+        var c=m.tipo+' · '+m.cat;
+        if(!C[c]) C[c]={};
+        C[c][k]=(C[c][k]||0)+m.monto;
+      });
+      var cols=Object.keys(M).sort();
+      var ct=[['Categoría'].concat(cols).concat(['Total'])];
+      Object.keys(C).sort().forEach(function(c){
+        var fila=[c], t=0;
+        cols.forEach(function(k){ var v=C[c][k]||0; t+=v; fila.push(v?_r4(v):''); });
+        fila.push(_r4(t)); ct.push(fila);
+      });
+
+      var wb=XLSX.utils.book_new();
+      function hoja(n,aoa,anchos){
+        var ws=XLSX.utils.aoa_to_sheet(aoa);
+        ws['!cols']=anchos.map(function(w){return {wch:w};});
+        ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:0,c:aoa[0].length-1}})};
+        ws['!freeze']={xSplit:0,ySplit:1};
+        XLSX.utils.book_append_sheet(wb,ws,n);
+      }
+      hoja('Movimientos',mv,[12,10,22,44,16,13,13,13,16]);
+      hoja('Flujo mensual',fl,[10,14,13,15,19]);
+      hoja('Por categoría',ct,[30].concat(cols.map(function(){return 11;})).concat([12]));
+      XLSX.writeFile(wb,'Flujo_de_caja_'+hoy()+'.xlsx');
+      toast('✓ Flujo de caja generado · saldo S/ '+saldo.toFixed(2),'ok');
+    }catch(e){ toast('Error: '+e.message,'err'); }
+  });
+}
+
+function abrirMovCaja(tipo){
+  document.getElementById('mcaja-tipo').value=tipo;
+  document.getElementById('mcaja-tit').textContent=tipo==='ENTRADA'?'↓ Registrar entrada':'↑ Registrar salida';
+  document.getElementById('mcaja-fecha').value=hoy();
+  document.getElementById('mcaja-monto').value='';
+  document.getElementById('mcaja-desc').value='';
+  document.getElementById('mcaja-ref').value='';
+  var cats=tipo==='ENTRADA'?CAJA_CATS_IN:CAJA_CATS_OUT;
+  document.getElementById('mcaja-cat').innerHTML=cats.map(function(c){return '<option>'+c+'</option>';}).join('');
+  var sp=document.getElementById('mcaja-prov');
+  sp.innerHTML='<option value="">— Sin proveedor —</option>'+(proveedores||[]).map(function(p){return '<option value="'+p.id+'">'+p.nombre+'</option>';}).join('');
+  document.getElementById('mcaja-prov-fg').style.display=tipo==='SALIDA'?'block':'none';
+  document.getElementById('MCAJA').classList.add('open');
+}
+async function saveMovCaja(){
+  var monto=parseFloat(document.getElementById('mcaja-monto').value);
+  if(!monto||monto<=0){ toast('Ingresa un monto válido','err'); return; }
+  var btn=document.getElementById('btnMCAJA'); btn.disabled=true; btn.textContent='⏳ Guardando...';
+  try{
+    var m={id:gid(),fecha:document.getElementById('mcaja-fecha').value||hoy(),
+      tipo:document.getElementById('mcaja-tipo').value,
+      categoria:document.getElementById('mcaja-cat').value,
+      descripcion:document.getElementById('mcaja-desc').value||null,
+      monto:monto,
+      proveedor_id:document.getElementById('mcaja-prov').value||null,
+      referencia:document.getElementById('mcaja-ref').value||null};
+    await sbIns('caja_movimientos',m);
+    cajaMovs.push(m);
+    document.getElementById('MCAJA').classList.remove('open');
+    toast('✓ Movimiento registrado','ok');
+    renderCaja();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+  finally{ btn.disabled=false; btn.textContent='💾 Guardar'; }
+}
+async function deleteMovCaja(id){
+  if(!confirm('¿Eliminar este movimiento de caja?')) return;
+  try{
+    await sb('caja_movimientos','DELETE',null,'?id=eq.'+encodeURIComponent(id));
+    cajaMovs=cajaMovs.filter(function(m){return m.id!==id;});
+    renderCaja(); toast('✓ Eliminado','ok');
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
+
 var GASTO_CATS=['Alquiler','Sueldos / Planilla','Servicios (luz/agua/internet)','Transporte / Flete','Marketing','Mantenimiento','Impuestos','Otros'];
 
 function utilCambiarMes(delta){
@@ -7395,6 +7661,7 @@ var AREAS=[
     {ic:'📊', t:'Dashboard',  d:'Resumen del mes',      go:['dashboard','resumen']},
     {ic:'🏆', t:'Comisiones', d:'Por vendedor',         go:['dashboard','comisiones']},
     {ic:'💰', t:'Utilidad',   d:'Ingresos y gastos',    go:['dashboard','utilidad']},
+    {ic:'🏦', t:'Caja',       d:'Entradas y salidas',   go:['dashboard','caja']},
     {ic:'💲', t:'Costos',     d:'Costeo de productos',  go:['stock','costos']},
     {ic:'📈', t:'Valorización',d:'Inventario en soles', go:['stock','resumen']}
   ]}
