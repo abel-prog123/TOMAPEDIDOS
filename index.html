@@ -512,7 +512,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
         </select>
       </div>
       <div class="fg"><label>Vendedor</label>
-        <select id="sel-v"><option>MOISES</option><option>SONIA</option><option>CRISTIAN</option><option>JHOSY</option></select>
+        <select id="sel-v"></select>
       </div>
       <div class="fg"><label>Observaciones / Dirección</label><textarea id="txt-obs" placeholder="Dirección, referencias..."></textarea></div>
       <div class="fg"><label>Fecha estimada de pago</label><input type="date" id="inp-fep"></div>
@@ -1399,12 +1399,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
       </select>
     </div>
     <div class="fg" id="fg-cot-vend"><label>Vendedor</label>
-      <select class="msel" id="cot-vend">
-        <option value="MOISES">MOISES</option>
-        <option value="SONIA">SONIA</option>
-        <option value="CRISTIAN">CRISTIAN</option>
-        <option value="JHOSY">JHOSY</option>
-      </select>
+      <select class="msel" id="cot-vend"></select>
     </div>
     <div class="fg"><label>Dirección (sale en el PDF)</label>
       <textarea id="cot-dir" rows="2" placeholder="Déjala vacía para que no aparezca en el PDF" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.85rem;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
@@ -1453,12 +1448,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 
     <div class="sdiv">Datos generales</div>
     <div class="fg" id="fg-e-vend"><label>Vendedor</label>
-      <select class="msel" id="e-vend">
-        <option value="MOISES">MOISES</option>
-        <option value="SONIA">SONIA</option>
-        <option value="CRISTIAN">CRISTIAN</option>
-        <option value="JHOSY">JHOSY</option>
-      </select>
+      <select class="msel" id="e-vend"></select>
       <div style="font-size:.7rem;color:var(--mu);margin-top:4px;">Al cambiarlo se recalculan las comisiones y se regenera la nota de venta.</div>
     </div>
     <div class="fg"><label>Estado de venta / pago</label>
@@ -7338,6 +7328,7 @@ const VENDEDORES=[
   {nombre:'SONIA',   emoji:'👩‍💼', color:'#8b5cf6', pin:'2345', rol:'vendedor'},
   {nombre:'CRISTIAN',emoji:'👨‍🔬', color:'#10b981', pin:'3456', rol:'vendedor'},
   {nombre:'JHOSY',   emoji:'👩‍💻', color:'#f59e0b', pin:'4567', rol:'vendedor'},
+  {nombre:'LESLI',   emoji:'👩‍🦰', color:'#ec4899', pin:'5678', rol:'vendedor'},
 ];
 const PIN_GERENTE='0000'; // Cambiar por PIN seguro
 
@@ -7354,6 +7345,18 @@ const PERMISOS={
     editarClientes:true, verReportes:false
   }
 };
+
+// Llena todos los selectores de vendedor desde VENDEDORES.
+// Para dar de alta a alguien nuevo basta con agregarlo arriba.
+function llenarSelectsVendedores(){
+  var opts=VENDEDORES.map(function(v){return '<option value="'+v.nombre+'">'+v.nombre+'</option>';}).join('');
+  ['sel-v','e-vend','cot-vend'].forEach(function(id){
+    var s=document.getElementById(id); if(!s) return;
+    var actual=s.value;
+    s.innerHTML=opts;
+    if(actual) s.value=actual;
+  });
+}
 
 function puedo(permiso){
   const rol=sesion.rol||'vendedor';
@@ -8050,6 +8053,7 @@ document.addEventListener('DOMContentLoaded',function(){
   var eq=document.getElementById('edet-qty');
   if(ep) ep.oninput=uEdetTotal;
   if(eq) eq.oninput=uEdetTotal;
+  llenarSelectsVendedores();
 });
 
 async function saveDetalle(){
