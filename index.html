@@ -447,6 +447,9 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 <div class="topbar">
   <h1 style="cursor:pointer;" onclick="cerrarSesion()">🚚 Frostech <span id="sesion-badge" style="font-size:.65rem;opacity:.7;font-weight:600;"></span></h1>
   <div class="topbar-actions">
+    <button class="ib" onclick="goS('inicio')" title="Inicio">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z"/></svg>
+    </button>
     <button class="ib" onclick="abrirBusqueda()" title="Buscar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
     </button>
@@ -593,6 +596,13 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 </div>
 
 <!-- STOCK -->
+<div class="screen" id="sc-inicio">
+  <div style="padding:16px 14px 20px;overflow-y:auto;flex:1;">
+    <div id="inicio-saludo" style="margin-bottom:16px;"></div>
+    <div id="inicio-areas"></div>
+  </div>
+</div>
+
 <div class="screen" id="sc-cotiza">
   <div style="padding:12px 14px;overflow-y:auto;flex:1;">
     <div style="display:flex;gap:8px;margin-bottom:10px;">
@@ -1695,8 +1705,8 @@ function goS(n){
   currentScreen=n;
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.ni').forEach(i=>i.classList.remove('active'));
-  document.getElementById('sc-'+n).classList.add('active');
-  document.getElementById('ni-'+n).classList.add('active');
+  var _s=document.getElementById('sc-'+n); if(_s) _s.classList.add('active');
+  var _n=document.getElementById('ni-'+n); if(_n) _n.classList.add('active');
   // FABs
   document.getElementById('fab-clientes').style.display=n==='clientes'?'block':'none';
 }
@@ -2733,9 +2743,11 @@ goS=function(n){
   currentScreen=n;
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.ni').forEach(i=>i.classList.remove('active'));
-  document.getElementById('sc-'+n).classList.add('active');
-  document.getElementById('ni-'+n).classList.add('active');
+  var sc=document.getElementById('sc-'+n); if(sc) sc.classList.add('active');
+  // 'inicio' no tiene botón en la barra inferior
+  var ni=document.getElementById('ni-'+n); if(ni) ni.classList.add('active');
   document.getElementById('fab-clientes').style.display=n==='clientes'?'block':'none';
+  if(n==='inicio'){ renderInicio(); }
   if(n==='dashboard'){var _dn=new Date();dashMes=_dn.getMonth()+1;dashAnio=_dn.getFullYear();renderDash();}
   if(n==='cotiza'){ renderCotizaciones(); }
 };
@@ -7348,6 +7360,81 @@ const PERMISOS={
 
 // Llena todos los selectores de vendedor desde VENDEDORES.
 // Para dar de alta a alguien nuevo basta con agregarlo arriba.
+
+// ══════════════════════════════════════════════════════════
+//  INICIO POR ÁREAS (estilo lanzador de aplicaciones)
+// ══════════════════════════════════════════════════════════
+var AREAS=[
+  {area:'Ventas', color:'#0ea5e9', apps:[
+    {ic:'🛒', t:'Nuevo pedido', d:'Registrar una venta',      go:['pedido']},
+    {ic:'💵', t:'Ventas',       d:'Historial y cobranza',     go:['ventas']},
+    {ic:'📋', t:'Cotizaciones', d:'Crear y seguir',           go:['cotiza']},
+    {ic:'👥', t:'Clientes',     d:'Cartera y datos',          go:['clientes']}
+  ]},
+  {area:'Almacén', color:'#8b5cf6', rol:'gerente', apps:[
+    {ic:'📦', t:'Productos',     d:'Stock terminado',     go:['stock','productos']},
+    {ic:'🧪', t:'Graneles',      d:'Stock a granel',      go:['stock','graneles']},
+    {ic:'🧱', t:'Materias primas',d:'Insumos y envases',  go:['stock','materias']},
+    {ic:'🔄', t:'Movimientos',   d:'Entradas y salidas',  go:['stock','movimientos']},
+    {ic:'🚚', t:'Despachos',     d:'Pendientes de entrega',go:['dashboard','despachos']}
+  ]},
+  {area:'Producción', color:'#16a34a', rol:'gerente', apps:[
+    {ic:'🏭', t:'Órdenes de producción', d:'Emitir y liquidar', go:['stock','op']},
+    {ic:'📝', t:'Recetas',               d:'Fórmulas y kits',   go:['stock','recetas']},
+    {ic:'🧮', t:'MRP',                   d:'Qué falta producir',go:['stock','mrp']}
+  ]},
+  {area:'Compras', color:'#f59e0b', rol:'gerente', apps:[
+    {ic:'🧾', t:'Órdenes de compra', d:'Emitir y recibir', go:['stock','oc']},
+    {ic:'🏢', t:'Proveedores',       d:'Contactos',        go:['stock','proveedores']}
+  ]},
+  {area:'Gerencia', color:'#be185d', rol:'gerente', apps:[
+    {ic:'📊', t:'Dashboard',  d:'Resumen del mes',      go:['dashboard','resumen']},
+    {ic:'🏆', t:'Comisiones', d:'Por vendedor',         go:['dashboard','comisiones']},
+    {ic:'💰', t:'Utilidad',   d:'Ingresos y gastos',    go:['dashboard','utilidad']},
+    {ic:'💲', t:'Costos',     d:'Costeo de productos',  go:['stock','costos']},
+    {ic:'📈', t:'Valorización',d:'Inventario en soles', go:['stock','resumen']}
+  ]}
+];
+
+function irA(pantalla,sub){
+  goS(pantalla);
+  if(!sub) return;
+  if(pantalla==='stock'&&typeof stockTab==='function') stockTab(sub);
+  else if(pantalla==='dashboard'&&typeof dashTab==='function') dashTab(sub);
+}
+
+function renderInicio(){
+  var cont=document.getElementById('inicio-areas'); if(!cont) return;
+  var esGerente=sesion.rol==='gerente';
+  var hora=new Date().getHours();
+  var saludo=hora<12?'Buenos días':(hora<19?'Buenas tardes':'Buenas noches');
+  document.getElementById('inicio-saludo').innerHTML=
+    '<div style="font-size:1.25rem;font-weight:900;color:var(--txt);">'+saludo+(sesion.vendedor?', '+sesion.vendedor:'')+'</div>'
+    +'<div style="font-size:.8rem;color:var(--mu);margin-top:2px;">'+_fechaLarga()+'</div>';
+
+  cont.innerHTML=AREAS.filter(function(a){ return !a.rol||esGerente; }).map(function(a){
+    return '<div style="margin-bottom:18px;">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+      +'<span style="width:4px;height:16px;border-radius:3px;background:'+a.color+';display:inline-block;"></span>'
+      +'<span style="font-size:.74rem;font-weight:900;letter-spacing:.5px;text-transform:uppercase;color:var(--mu);">'+a.area+'</span></div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px;">'
+      +a.apps.map(function(p){
+        return '<div onclick="irA(\''+p.go[0]+'\''+(p.go[1]?',\''+p.go[1]+'\'':'')+')" '
+          +'style="background:var(--card);border-radius:14px;padding:13px 12px;cursor:pointer;box-shadow:0 1px 5px rgba(0,0,0,.06);border-left:3px solid '+a.color+';">'
+          +'<div style="font-size:1.5rem;line-height:1;margin-bottom:6px;">'+p.ic+'</div>'
+          +'<div style="font-size:.84rem;font-weight:800;color:var(--txt);line-height:1.15;">'+p.t+'</div>'
+          +'<div style="font-size:.68rem;color:var(--mu);margin-top:2px;">'+p.d+'</div></div>';
+      }).join('')
+      +'</div></div>';
+  }).join('');
+}
+function _fechaLarga(){
+  var d=new Date();
+  var dias=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  var mes=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','setiembre','octubre','noviembre','diciembre'];
+  return dias[d.getDay()]+', '+d.getDate()+' de '+mes[d.getMonth()]+' de '+d.getFullYear();
+}
+
 function llenarSelectsVendedores(){
   var opts=VENDEDORES.map(function(v){return '<option value="'+v.nombre+'">'+v.nombre+'</option>';}).join('');
   ['sel-v','e-vend','cot-vend'].forEach(function(id){
@@ -7489,6 +7576,7 @@ function mostrarApp(){
   }
 
   init();
+  goS('inicio');
 }
 
 function cerrarSesion(){
