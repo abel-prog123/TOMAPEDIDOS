@@ -2875,6 +2875,21 @@ saveEdit=async function(){
 // ── EDITAR/NUEVO PRODUCTO ─────────────────────────────────
 let editProdId=null, newProdPhoto=null;
 
+// Muestra u oculta el manejo de stock según el tipo, y explica cada modo.
+function _notaTipoEP(){
+  var t=document.getElementById('ep-tipo'), fg=document.getElementById('ep-stock-fg'),
+      ms=document.getElementById('ep-manejastock'), nota=document.getElementById('ep-tipo-nota');
+  if(!t||!fg||!ms||!nota) return;
+  var esCompuesto=(t.value==='KIT'||t.value==='PROMOCION');
+  fg.style.display=esCompuesto?'block':'none';
+  if(!esCompuesto){ nota.textContent='Producto normal: lleva su propio stock.'; return; }
+  var propio=ms.value==='1';
+  nota.textContent=propio
+    ? 'Se arma con una orden de producción y tiene stock propio. Se puede desdoblar para recuperar sus componentes.'
+    : 'No se empaca: al vender se descuentan directamente los productos que lo componen.';
+  nota.style.color=propio?'#1d4ed8':'#166534';
+}
+
 function abrirEP(id){
   const p=prods.find(x=>x.id===id); if(!p) return;
   editProdId=id; newProdPhoto=null;
