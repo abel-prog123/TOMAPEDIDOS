@@ -782,10 +782,8 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 </div>
 
 
-</div>
 
 
-</div>
 
 <!-- MODAL CONFIGURACIÓN RECORDATORIOS -->
 <div class="mo" id="MCOBR" onclick="if(event.target===this)this.classList.remove('open')" style="z-index:200;">
@@ -1625,8 +1623,34 @@ async function sbGet(table,filters=''){
   }
   return out;
 }
-async function sbIns(table,body){return sb(table,'POST',body);}
-async function sbUpd(table,id,body){return sb(table,'PATCH',body,`?id=eq.${id}`);}
+// Si un script SQL todavía no se corrió, la columna nueva no existe y
+// Supabase rechaza TODO el registro. Antes eso dejaba ventas sin detalle.
+// Ahora se quita la columna faltante y se reintenta, para no perder el dato.
+var _colsFaltantes={};
+async function _sbGuardar(table,method,body,filters){
+  var cuerpo=Object.assign({},body);
+  for(var i=0;i<5;i++){
+    try{ return await sb(table,method,cuerpo,filters); }
+    catch(e){
+      var msg=String((e&&e.message)||'');
+      var m=msg.match(/Could not find the '([^']+)' column/);
+      if(m&&Object.prototype.hasOwnProperty.call(cuerpo,m[1])){
+        delete cuerpo[m[1]];
+        var clave=table+'.'+m[1];
+        if(!_colsFaltantes[clave]){
+          _colsFaltantes[clave]=true;
+          console.warn('Falta la columna '+clave+' en Supabase: hay un script SQL pendiente.');
+          toast('⚠️ Falta correr un script SQL: columna '+m[1]+' en '+table+'. Se guardó sin ese dato.','err');
+        }
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new Error('No se pudo guardar en '+table);
+}
+async function sbIns(table,body){return _sbGuardar(table,'POST',body,'');}
+async function sbUpd(table,id,body){return _sbGuardar(table,'PATCH',body,`?id=eq.${id}`);}
 
 // Upload imagen a Supabase Storage
 async function uploadImg(file, path, b64, mimeType){
@@ -3510,7 +3534,7 @@ async function crearCotizacion(){
     var cab={id:id,numero:num,fecha:f,fecha_vencimiento:_sumaDias(f,COT_VALIDEZ_DIAS),
              cliente_id:cli,vendedor:sesion.vendedor,estado:'BORRADOR',
              direccion:(clis.find(function(x){return x.id===cli;})||{}).direccion||'',
-             observaciones:document.getElementById('inp-obs')?document.getElementById('inp-obs').value:'',
+             observaciones:document.getElementById('txt-obs')?document.getElementById('txt-obs').value:'',
              condiciones:'Precios incluyen IGV. Validez '+COT_VALIDEZ_DIAS+' días. Sujeto a disponibilidad de stock.',
              total:sub,descuento_total:desc,venta_id:null};
     await sbIns('cotizaciones',cab);
