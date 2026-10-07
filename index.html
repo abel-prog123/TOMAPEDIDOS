@@ -769,6 +769,26 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
         <option>120ML</option><option>300ML</option><option>OTRO</option>
       </select>
     </div>
+    <div class="fg"><label>Tipo de producto</label>
+      <select id="ep-tipo" class="msel" onchange="_notaTipoEP()">
+        <option value="SIMPLE">Simple</option>
+        <option value="KIT">Kit (contiene otros productos)</option>
+        <option value="PROMOCION">Promoción</option>
+      </select>
+    </div>
+    <div class="fg" id="ep-stock-fg" style="display:none;"><label>Manejo de stock</label>
+      <select id="ep-manejastock" class="msel" onchange="_notaTipoEP()">
+        <option value="1">Se empaca en almacén (stock propio)</option>
+        <option value="0">Se arma al despachar (descuenta componentes)</option>
+      </select>
+      <div id="ep-tipo-nota" style="font-size:.7rem;color:var(--mu);margin-top:4px;"></div>
+    </div>
+    <div class="fg"><label>Estado</label>
+      <select id="ep-activo" class="msel">
+        <option value="1">Activo — aparece en el catálogo</option>
+        <option value="0">Inactivo — oculto del catálogo</option>
+      </select>
+    </div>
     <div class="fg"><label>Precio (S/) *</label><input type="number" id="ep-precio" step="0.01" min="0" class="minp" style="width:100%"></div>
     <div class="fg"><label>Costo sin IGV (S/)</label><input type="number" id="ep-costo" step="0.01" min="0" class="minp" style="width:100%">
       <div id="ep-costo-nota" style="font-size:.7rem;margin-top:4px;"></div></div>
@@ -1408,7 +1428,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
       <textarea id="op-obs" rows="2" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.85rem;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
     </div>
 
-    <div style="font-size:.8rem;font-weight:800;color:var(--mu);margin:14px 0 4px;">&#129514; INSUMOS &mdash; anota lo realmente usado</div>
+    <div style="font-size:.8rem;font-weight:800;color:var(--mu);margin:14px 0 4px;" id="op-lbl-dets">&#129514; INSUMOS &mdash; anota lo realmente usado</div>
     <div id="op-dets"></div>
 
     <button onclick="opPDF()" style="width:100%;padding:11px;background:var(--p);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.84rem;font-weight:800;cursor:pointer;margin-top:14px;">&#128196; Imprimir OP para planta</button>
@@ -2708,6 +2728,10 @@ function accionPlus(){
 function abrirMP(){
   editProdId=null; newProdPhoto=null;
   ['ep-nombre','ep-precio','ep-costo','ep-comision'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('ep-tipo').value='SIMPLE';
+  document.getElementById('ep-manejastock').value='1';
+  document.getElementById('ep-activo').value='1';
+  _notaTipoEP();
   _notaCostoEP(null);
   document.getElementById('ep-cat').value='';
   document.getElementById('prod-foto-prev').style.display='none';
@@ -2858,6 +2882,10 @@ function abrirEP(id){
   document.getElementById('ep-cat').value=p.categoria||'';
   document.getElementById('ep-precio').value=p.precio||'';
   document.getElementById('ep-costo').value=p.costo||'';
+  document.getElementById('ep-tipo').value=p.tipo_producto||'SIMPLE';
+  document.getElementById('ep-manejastock').value=(p.maneja_stock===false?'0':'1');
+  document.getElementById('ep-activo').value=(p.activo===false?'0':'1');
+  _notaTipoEP();
   _notaCostoEP(p.id);
   document.getElementById('ep-comision').value=p.comision||'';
   const prev=document.getElementById('prod-foto-prev');
@@ -2899,6 +2927,9 @@ async function saveProd(){
       categoria:document.getElementById('ep-cat').value||null,
       precio,
       costo:parseFloat(document.getElementById('ep-costo').value)||0,
+      tipo_producto:document.getElementById('ep-tipo').value,
+      maneja_stock:document.getElementById('ep-manejastock').value==='1',
+      activo:document.getElementById('ep-activo').value==='1',
       comision:parseFloat(document.getElementById('ep-comision').value)||0,
     };
     if(fotoUrl) data.foto_url=fotoUrl;
@@ -5210,6 +5241,7 @@ function renderStockProds(){
           <button class="stock-btn edit" onclick="abrirMov('prod','${p.id}','${p.nombre}','ajuste')">⚖️ Ajuste</button>
           <button class="stock-btn edit" onclick="abrirEP('${p.id}')">✏️ Editar</button>
           <button class="stock-btn edit" onclick="editStockProd('${p.id}')">⚙️ Mínimo</button>
+          ${(tieneReceta(p.id)&&p.maneja_stock!==false&&recetas.some(r=>r.producto_id===p.id&&r.producto_componente_id))?`<button class="stock-btn" onclick="desdoblar('${p.id}')" style="background:#fef3c7;color:#92400e;">🔓 Desdoblar</button>`:''}
           <button class="stock-btn" onclick="abrirKardex('prod','${p.id}','${(p.nombre||'').replace(/'/g,"\\'")}','${p.unidad||'UND'}')" style="background:#ede9fe;color:#6d28d9;">📋 Kardex</button>
           <button class="stock-btn" onclick="borrarProdStock('${p.id}')" style="background:#fee2e2;color:#b91c1c;">🗑️</button>
         </div>
@@ -6234,22 +6266,77 @@ async function confirmarProduccion(){
 }
 
 // ── 1. DESCUENTO AUTOMÁTICO AL CAMBIAR ESTADO A ENTREGADO ──
+// Explota un producto en lo que realmente hay que descontar del almacén.
+// Si la promo NO maneja stock propio, se descuentan sus componentes;
+// si alguno de esos componentes es a su vez una promo virtual, se sigue
+// bajando hasta llegar a algo que sí tenga stock.
+function _explotarParaStock(prodId,cant,acc,visit){
+  acc=acc||[]; visit=visit||{};
+  var p=prods.find(function(x){return x.id===prodId;});
+  var virtual=p&&p.maneja_stock===false&&tieneReceta(prodId)&&!visit[prodId];
+  if(!virtual){ acc.push({tipo:'prod',id:prodId,cant:cant,nombre:p?p.nombre:prodId}); return acc; }
+  visit[prodId]=1;
+  recetas.filter(function(r){return r.producto_id===prodId;}).forEach(function(r){
+    var q=parseFloat(r.cantidad||0)*cant;
+    if(r.producto_componente_id) _explotarParaStock(r.producto_componente_id,q,acc,visit);
+    else if(r.granel_id){
+      var g=graneles.find(function(x){return x.id===r.granel_id;});
+      acc.push({tipo:'granel',id:r.granel_id,cant:q,nombre:g?g.nombre:r.granel_id});
+    } else if(r.materia_prima_id){
+      var m=materias.find(function(x){return x.id===r.materia_prima_id;});
+      acc.push({tipo:'mp',id:r.materia_prima_id,cant:q,nombre:m?m.nombre:r.materia_prima_id});
+    }
+  });
+  return acc;
+}
+function _tablaDe(t){ return t==='prod'?'productos':(t==='granel'?'graneles':'materias_primas'); }
+function _arrDe(t){ return t==='prod'?prods:(t==='granel'?graneles:materias); }
+function _stockDe(t,id){
+  var it=_arrDe(t).find(function(x){return x.id===id;});
+  return it?parseFloat(it.stock_actual||0):null;
+}
+
+
+// Cuántas unidades de una promo virtual se pueden vender según sus componentes
+function dispoVirtual(prodId){
+  var comps=_explotarParaStock(prodId,1);
+  if(comps.length===1&&comps[0].id===prodId) return null;  // no es virtual
+  var min=null, falta=null;
+  comps.forEach(function(c){
+    var st=_stockDe(c.tipo,c.id);
+    if(st===null||!(c.cant>0)) return;
+    var posibles=Math.floor(st/c.cant);
+    if(min===null||posibles<min){ min=posibles; falta=c.nombre; }
+  });
+  return {cant:min===null?0:min, limita:falta};
+}
+
 async function descontarStockVenta(ventaId){
   try{
     const allDets = await sbGet('detalle_ventas','?venta_id=eq.'+ventaId);
+    // Agrupar: una promo virtual y su componente suelto se suman
+    var mov={};
     for(var i=0;i<allDets.length;i++){
       var d=allDets[i];
-      var pr=prods.find(function(p){return p.id===d.producto_id;});
-      if(!pr) continue;
-      var qty=parseFloat(d.cantidad||0);
-      var nuevoStock=Math.max(0,parseFloat(pr.stock_actual||0)-qty);
-      await sbUpd('productos',d.producto_id,{stock_actual:nuevoStock});
-      pr.stock_actual=nuevoStock;
-      await sbIns('movimientos_stock',{
-        id:gid(),tipo:'SALIDA',referencia:'VENTA',
-        producto_id:d.producto_id,cantidad:qty,
-        nota:'Venta '+ventaId,fecha:hoy()
+      if(!prods.find(function(p){return p.id===d.producto_id;})) continue;
+      _explotarParaStock(d.producto_id,parseFloat(d.cantidad||0)).forEach(function(x){
+        var k=x.tipo+'|'+x.id;
+        if(!mov[k]) mov[k]={tipo:x.tipo,id:x.id,cant:0,nombre:x.nombre};
+        mov[k].cant+=x.cant;
       });
+    }
+    var claves=Object.keys(mov);
+    for(var j=0;j<claves.length;j++){
+      var x=mov[claves[j]];
+      var it=_arrDe(x.tipo).find(function(y){return y.id===x.id;});
+      if(!it) continue;
+      var ns=Math.max(0,parseFloat(it.stock_actual||0)-x.cant);
+      await sbUpd(_tablaDe(x.tipo),x.id,{stock_actual:ns});
+      it.stock_actual=ns;
+      var reg={id:gid(),tipo:'SALIDA',referencia:'VENTA',cantidad:x.cant,
+               nota:'Venta '+ventaId,fecha:hoy()};
+      if(x.tipo==='prod') reg.producto_id=x.id; else reg.materia_prima_id=x.id;
+      await sbIns('movimientos_stock',reg);
     }
     toast('Stock descontado automáticamente','ok');
   }catch(e){console.error('Error descontando stock:',e);}
@@ -6695,7 +6782,7 @@ async function emitirOP(tipo,destinoId,cantidad){
   try{
     var id=gid(), num=opNumero();
     var cab={id:id,numero:num,tipo:tipo,fecha:hoy(),estado:'EMITIDA',
-      producto_id:tipo==='ENVASADO'?destinoId:null,
+      producto_id:tipo==='GRANEL'?null:destinoId,
       granel_id:tipo==='GRANEL'?destinoId:null,
       destino_nombre:destNom,unidad:unidad,
       cant_planificada:cantidad,cant_real:null,
@@ -6746,6 +6833,23 @@ function renderOPs(){
 }
 
 
+
+// ── Desdoblar una promo o kit: devuelve sus componentes al stock ──
+async function desdoblar(prodId){
+  var p=prods.find(function(x){return x.id===prodId;}); if(!p) return;
+  var disp=parseFloat(p.stock_actual||0);
+  if(disp<=0){ toast('No hay stock de '+p.nombre+' para desdoblar','err'); return; }
+  var comps=recetas.filter(function(r){return r.producto_id===prodId;});
+  if(!comps.length){ toast('Este producto no tiene componentes definidos','err'); return; }
+  var txt=prompt('¿Cuántas unidades de "'+p.nombre+'" quieres desdoblar?\n\nEn stock: '+disp+'\n\nSus componentes volverán al almacén.',disp);
+  if(txt===null) return;
+  var qty=parseFloat(txt);
+  if(!(qty>0)){ toast('Cantidad inválida','err'); return; }
+  if(qty>disp){ toast('Solo hay '+disp+' en stock','err'); return; }
+  var op=await emitirOP('DESARMADO',prodId,qty);
+  if(op){ goS('stock'); stockTab('op'); abrirOP(op.id); }
+}
+
 // ── Abrir OP / liquidar ──
 function abrirOP(id){
   var o=ops.find(function(x){return x.id===id;}); if(!o) return;
@@ -6753,7 +6857,8 @@ function abrirOP(id){
   opDets=detOps.filter(function(d){return d.op_id===id;}).map(function(d){return Object.assign({},d);});
   var liq=o.estado==='LIQUIDADA';
   document.getElementById('op-tit').textContent=(o.numero||'')+' · '+o.tipo;
-  document.getElementById('op-sub').textContent=(o.destino_nombre||'')+' · plan '+parseFloat(o.cant_planificada||0)+' '+(o.unidad||'');
+  document.getElementById('op-sub').textContent=(o.tipo==='DESARMADO'?'Desdoblar ':'')
+    +(o.destino_nombre||'')+' · '+(o.tipo==='DESARMADO'?'':'plan ')+parseFloat(o.cant_planificada||0)+' '+(o.unidad||'');
   document.getElementById('op-lote').value=o.lote||'';
   document.getElementById('op-resp').value=o.responsable||'';
   document.getElementById('op-obs').value=o.observaciones||'';
@@ -6764,6 +6869,12 @@ function abrirOP(id){
   if(liq) document.getElementById('op-liq-info').innerHTML=
     '<div style="background:#dcfce7;color:#166534;border-radius:10px;padding:10px;font-size:.78rem;font-weight:700;">'
     +'✓ Liquidada el '+(o.fecha_liquidacion||'')+(o.liquidado_por?' por '+o.liquidado_por:'')+'</div>';
+  var lbl=document.getElementById('op-lbl-dets');
+  if(lbl) lbl.innerHTML=(o.tipo==='DESARMADO')
+    ? '🔓 VUELVEN AL STOCK — ajusta si recuperas menos'
+    : '🧪 INSUMOS — anota lo realmente usado';
+  var bl=document.getElementById('op-btn-liq');
+  if(bl) bl.textContent=(o.tipo==='DESARMADO')?'🔓 DESDOBLAR (mueve el stock)':'✅ LIQUIDAR (mueve el stock)';
   opRenderDets(liq);
   document.getElementById('MOP').classList.add('open');
 }
@@ -6779,6 +6890,7 @@ function opRenderDets(soloLectura){
     if(d.producto_id){ var pp=prods.find(function(x){return x.id===d.producto_id;}); if(pp) disp=parseFloat(pp.stock_actual||0); }
     else if(d.granel_id){ var gg=graneles.find(function(x){return x.id===d.granel_id;}); if(gg) disp=parseFloat(gg.stock_actual||0); }
     else if(d.materia_prima_id){ var mm=materias.find(function(x){return x.id===d.materia_prima_id;}); if(mm) disp=parseFloat(mm.stock_actual||0); }
+    if(opActual&&opActual.tipo==='DESARMADO'){ disp=null; }
     var comp=d.producto_id?0:comprometido(d.granel_id?'granel':'materia',d.granel_id||d.materia_prima_id);
     var libre=disp!=null?(disp-comp+parseFloat(d.cant_teorica||0)):null;
     var falta=(libre!=null&&libre<parseFloat(d.cant_teorica||0))
@@ -6806,16 +6918,64 @@ async function liquidarOP(){
   if(!lote){ toast('El lote es obligatorio','err'); return; }
   var plan=parseFloat(opActual.cant_planificada||0);
   var rend=plan>0?(real/plan*100):100;
-  var msg='Liquidar '+(opActual.numero||'')+'\n\n'
+  var msg=(opActual.tipo==='DESARMADO'
+      ?('Desdoblar '+(opActual.numero||'')+'\n\nSe descontarán '+real+' de '+(opActual.destino_nombre||'')+'\ny sus componentes volverán al stock.\n\nEsta acción no se puede deshacer.')
+      :'Liquidar '+(opActual.numero||'')+'\n\n'
     +'Planificado: '+plan+' '+(opActual.unidad||'')+'\n'
     +'Real: '+real+' '+(opActual.unidad||'')+'\n'
     +'Rendimiento: '+rend.toFixed(1)+'%\n'
     +'Lote: '+lote+'\n\n'
-    +'Se descontarán los insumos y se sumará el producto al stock.\nEsta acción no se puede deshacer.';
+    +'Se descontarán los insumos y se sumará el producto al stock.\nEsta acción no se puede deshacer.');
   if(!confirm(msg)) return;
   var btn=document.getElementById('op-btn-liq'); btn.disabled=true; btn.textContent='⏳ Liquidando...';
   try{
     var f=hoy(), ref='OP '+(opActual.numero||''), quien=sesion.vendedor||'';
+    var esDesarme=opActual.tipo==='DESARMADO';
+
+    if(esDesarme){
+      // Desdoblar: sale la promo, vuelven sus componentes al almacén
+      var pd0=prods.find(function(x){return x.id===opActual.producto_id;});
+      if(pd0){
+        var disp=parseFloat(pd0.stock_actual||0);
+        if(real>disp+0.0001){ toast('Solo hay '+disp+' en stock de '+pd0.nombre,'err'); btn.disabled=false; btn.textContent='✅ LIQUIDAR (mueve el stock)'; return; }
+        var nps=Math.max(0,disp-real);
+        await sbUpd('productos',pd0.id,{stock_actual:nps}); pd0.stock_actual=nps;
+        await sbIns('movimientos_stock',{id:gid(),tipo:'SALIDA',referencia:ref,
+          producto_id:pd0.id,cantidad:real,nota:'Desdoblado '+ref,fecha:f,lote:lote,op_id:opActual.id});
+      }
+      for(var k=0;k<opDets.length;k++){
+        var dd=opDets[k];
+        var dev=dd.cant_real!=null?parseFloat(dd.cant_real):parseFloat(dd.cant_teorica||0);
+        if(!(dev>0)) continue;
+        var tp=dd.producto_id?'prod':(dd.granel_id?'granel':'mp');
+        var idc=dd.producto_id||dd.granel_id||dd.materia_prima_id;
+        var itc=_arrDe(tp).find(function(y){return y.id===idc;});
+        if(itc){
+          var nsc=parseFloat(itc.stock_actual||0)+dev;
+          await sbUpd(_tablaDe(tp),idc,{stock_actual:nsc}); itc.stock_actual=nsc;
+          var regc={id:gid(),tipo:'ENTRADA',referencia:ref,cantidad:dev,
+                    nota:'Devuelto por desdoblado '+ref,fecha:f,lote:dd.lote_insumo||null,op_id:opActual.id};
+          if(tp==='prod') regc.producto_id=idc; else regc.materia_prima_id=idc;
+          await sbIns('movimientos_stock',regc);
+        }
+        await sbUpd('detalle_op',dd.id,{cant_real:dev,lote_insumo:dd.lote_insumo||null});
+      }
+      var updD={estado:'LIQUIDADA',cant_real:real,lote:lote,
+        responsable:document.getElementById('op-resp').value,
+        observaciones:document.getElementById('op-obs').value,
+        fecha_liquidacion:f,liquidado_por:quien};
+      await sbUpd('ordenes_produccion',opActual.id,updD);
+      Object.assign(opActual,updD);
+      detOps=detOps.filter(function(d){return d.op_id!==opActual.id;}).concat(opDets);
+      renderOPs(); renderStockProds();
+      if(typeof renderStockGraneles==='function') renderStockGraneles();
+      if(typeof renderStockMaterias==='function') renderStockMaterias();
+      toast('✅ '+(opActual.numero||'')+' desdoblada · '+real+' unidad(es)','ok');
+      cerrarOP();
+      btn.disabled=false; btn.textContent='✅ LIQUIDAR (mueve el stock)';
+      return;
+    }
+
     // 1) Descontar componentes con la cantidad REAL
     for(var i=0;i<opDets.length;i++){
       var d=opDets[i];
