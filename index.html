@@ -2251,7 +2251,7 @@ function buildPDF(nomC,rucC,pago,comp,vend,obs,fecha,numDoc,snap){
 
 // ── VENTAS ────────────────────────────────────────────────
 function getAb(vid){return abonos.filter(a=>a.venta_id===vid).reduce((s,a)=>s+parseFloat(a.monto||0),0);}
-function getPS(tot,ab){if(ab<=0)return'pendiente';if(ab>=tot)return'pagado';return'parcial';}
+function getPS(tot,ab){if(ab<=0)return'pendiente';if(ab>=tot-0.50)return'pagado';return'parcial';}
 
 function renderV(list){
   const el=document.getElementById('VL');
@@ -3382,12 +3382,13 @@ async function renderUtilidad(){
     var cogs=0, comis=0;
     dets.forEach(function(d){
       if(!idsMes[d.venta_id]) return;
-      var pr=prods.find(function(p){return p.id===d.producto_id;});
-      var costo=_costoLinea(d);
-      var qty=parseFloat(d.cantidad||0);
-      cogs+=costo*qty;
-      var v=vMes.find(function(x){return x.id===d.venta_id;});
-      comis+=calcComision(v?v.vendedor:'',parseFloat(d.precio_final||0),costo,qty);
+      cogs+=_costoLinea(d)*parseFloat(d.cantidad||0);
+    });
+    // Comisión devengada por los COBROS del mes (asi es como se paga).
+    // No se calcula por linea: sale del pedido completo.
+    vMes.forEach(function(v){
+      var dv=dets.filter(function(d){return d.venta_id===v.id;});
+      comis+=calcComisionVenta(v,dv).comision;
     });
     var utilBruta=ingresoNeto-cogs;
     var gMes=gastos.filter(function(g){return _enMesUtil(g.fecha);});
@@ -4271,6 +4272,92 @@ async function exportExcel(){
 
 
 // ── CÁLCULO DE COMISIONES ─────────────────────────────────
+
+// ══════════════════════════════════════════════════════════
+//  COBRANZA Y COMISIONES — reglas únicas para toda la app
+// ══════════════════════════════════════════════════════════
+// Tolerancia de redondeo: una venta a la que le falta medio sol
+// o menos se considera PAGADA. Sin esto, un céntimo de
+// diferencia dejaba la venta como parcial y sin fecha de pago.
+var TOL_PAGO=0.50;
+
+function _abonosDe(vid){
+  return (abonos||[]).filter(function(a){return a.venta_id===vid;})
+    .slice().sort(function(a,b){ return (a.fecha||'')<(b.fecha||'')?-1:((a.fecha||'')>(b.fecha||'')?1:0); });
+}
+function _pagadoDe(vid){
+  return _abonosDe(vid).reduce(function(s,a){return s+parseFloat(a.monto||0);},0);
+}
+// ¿La venta está cancelada por completo? (con tolerancia de céntimos)
+function estaPagada(v){
+  var tot=parseFloat(v&&v.total||0);
+  if(!(tot>0)) return false;
+  return _pagadoDe(v.id) >= tot - TOL_PAGO;
+}
+// FECHA DE PAGO REAL = el día en que la venta terminó de pagarse.
+// No es la fecha de cada abono: es la del abono con el que el
+// acumulado alcanzó el total. Si la venta sigue debiendo, va vacía.
+// Una fecha cargada a mano en la venta manda sobre el cálculo.
+function fechaPagoReal(v){
+  if(!v) return '';
+  var tot=parseFloat(v.total||0);
+  if(!(tot>0)) return v.fecha_pago_real||'';
+  var acum=0, abs=_abonosDe(v.id);
+  for(var i=0;i<abs.length;i++){
+    acum+=parseFloat(abs[i].monto||0);
+    if(acum >= tot - TOL_PAGO) return abs[i].fecha||v.fecha_pago_real||'';
+  }
+  // Sin abonos registrados pero con fecha puesta a mano: se respeta
+  if(!abs.length && v.fecha_pago_real) return v.fecha_pago_real;
+  return '';
+}
+// ¿Este abono fue el que completó la venta?
+function _abonoQueCompleta(v,abonoId){
+  var tot=parseFloat(v&&v.total||0); if(!(tot>0)) return false;
+  var acum=0, abs=_abonosDe(v.id);
+  for(var i=0;i<abs.length;i++){
+    acum+=parseFloat(abs[i].monto||0);
+    if(acum >= tot - TOL_PAGO) return abs[i].id===abonoId;
+  }
+  return false;
+}
+
+// ── COMISIÓN POR VENTA (sobre lo realmente cobrado) ──
+// Antes se calculaba línea por línea sobre lo FACTURADO. Ahora:
+//   · se calcula sobre el monto PAGADO
+//   · el margen sale del pedido completo, no de cada producto
+//   · un pago parcial genera comisión parcial, en la misma proporción
+// Devuelve el detalle del cálculo para poder auditarlo.
+function calcComisionVenta(v,dets){
+  var r={facturado:0,pagado:0,pagadoNeto:0,costoTotal:0,costoProp:0,
+         margenS:0,margenPct:0,comision:0,proporcion:0,formula:''};
+  if(!v||v.estado==='ANULADO') return r;
+  var tot=parseFloat(v.total||0);
+  var pagado=_pagadoDe(v.id);
+  if(pagado>tot) pagado=tot;              // sobrepagos no generan comisión extra
+  r.facturado=tot; r.pagado=pagado;
+  if(!(pagado>0)||!(tot>0)) return r;
+
+  r.proporcion=pagado/tot;
+  r.pagadoNeto=pagado/1.18;
+  (dets||[]).forEach(function(d){
+    r.costoTotal+=_costoLinea(d)*parseFloat(d.cantidad||0);
+  });
+  r.costoProp=r.costoTotal*r.proporcion;
+  r.margenS=r.pagadoNeto-r.costoProp;
+  r.margenPct=r.pagadoNeto>0?(r.margenS/r.pagadoNeto*100):0;
+
+  var vNorm=(v.vendedor||'').toUpperCase();
+  if(vNorm==='JHOSY'){
+    r.comision=Math.max(0,r.margenS*0.11);
+    r.formula='11% del margen cobrado';
+  } else {
+    r.comision=Math.max(0,((r.margenPct/100)-0.20)*0.64*r.pagadoNeto);
+    r.formula='(margen% - 20%) x 64% x cobrado neto';
+  }
+  return r;
+}
+
 function calcComision(vendedor, precioVenta, costoSinIGV, cantidad){
   const pv=parseFloat(precioVenta)||0;
   const costo=parseFloat(costoSinIGV)||0;
@@ -4302,33 +4389,37 @@ async function renderComisiones(){
   const el=document.getElementById('dash-comisiones');
   el.innerHTML='<div class="empty"><p>Calculando comisiones...</p></div>';
   try{
-    // Solo ventas COMPLETADAS (pagadas)
-    const ventasCompletas=ventas.filter(v=>v.estado==='COMPLETADO');
+    // La comisión se devenga con el COBRO: entran las ventas con algún pago
+    const ventasCompletas=ventas.filter(v=>v.estado!=='ANULADO'&&_pagadoDe(v.id)>0);
     if(!ventasCompletas.length){
-      el.innerHTML='<div class="empty"><p>No hay ventas completadas aún.<br>Las comisiones se generan cuando el cliente paga completamente.</p></div>';
+      el.innerHTML='<div class="empty"><p>Aún no hay cobros registrados.<br>La comisión se calcula sobre lo que el cliente paga.</p></div>';
       return;
     }
+    // Mes de la comisión = mes de la fecha de pago real; si aún debe, el del último pago
+    const _mesCom=v=>{
+      const fr=fechaPagoReal(v);
+      let f=fr;
+      if(!f){ const a=_abonosDe(v.id); f=a.length?(a[a.length-1].fecha||''):''; }
+      if(!f) return '';
+      const d=pF(f);
+      return isNaN(d)?'':`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    };
 
     const allDets=await sbGet('detalle_ventas');
     const now=new Date();
 
     // Construir meses disponibles
     const mesesDisp=[];
-    ventas.filter(v=>v.estado==='COMPLETADO').forEach(v=>{
-      if(!v.fecha_pago_real&&!v.fecha) return;
-      const d=pF(v.fecha_pago_real||v.fecha);
-      const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    ventasCompletas.forEach(v=>{
+      const key=_mesCom(v); if(!key) return;
+      const d=pF(key+'-01');
       const label=MESES[d.getMonth()]+' '+d.getFullYear();
       if(!mesesDisp.find(m=>m.key===key)) mesesDisp.push({key,label});
     });
     mesesDisp.sort((a,b)=>b.key.localeCompare(a.key));
 
     // Filtrar según mes seleccionado
-    const ventasFilt=comFiltroMes==='todos'?ventasCompletas:ventasCompletas.filter(v=>{
-      const d=pF(v.fecha_pago_real||v.fecha||'');
-      const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      return key===comFiltroMes;
-    });
+    const ventasFilt=comFiltroMes==='todos'?ventasCompletas:ventasCompletas.filter(v=>_mesCom(v)===comFiltroMes);
 
     // Calcular comisiones por vendedor
     const comVend={};
@@ -4337,22 +4428,19 @@ async function renderComisiones(){
       const vend=v.vendedor||'Sin vendedor';
       if(!comVend[vend]){comVend[vend]=0;detalleVend[vend]=[];}
       const dets=allDets.filter(d=>d.venta_id===v.id);
-      dets.forEach(d=>{
-        const pr=prods.find(p=>p.id===d.producto_id);
-        const costo=_costoLinea(d);
-        const com=calcComision(vend,parseFloat(d.precio_final||0),costo,parseFloat(d.cantidad||1));
-        comVend[vend]+=com;
-        const c=clis.find(x=>x.id===v.cliente_id);
-        detalleVend[vend].push({
-          venta_id:v.id,
-          fecha:v.fecha_pago_real||v.fecha||'',
-          cliente:c?(c.nombres||c.alias||'?'):'?',
-          producto:pr?pr.nombre||d.producto_id:d.producto_id,
-          cantidad:d.cantidad,
-          pvNeto:(parseFloat(d.precio_final||0)/1.18).toFixed(2),
-          costo:_costoLinea(d).toFixed(2),
-          comision:com.toFixed(2)
-        });
+      const r=calcComisionVenta(v,dets);
+      comVend[vend]+=r.comision;
+      const c=clis.find(x=>x.id===v.cliente_id);
+      const parcial=!estaPagada(v);
+      detalleVend[vend].push({
+        venta_id:v.id,
+        fecha:fechaPagoReal(v)||v.fecha||'',
+        cliente:c?(c.nombres||c.alias||'?'):'?',
+        producto:dets.length+' producto'+(dets.length===1?'':'s')+(parcial?' · PAGO PARCIAL':''),
+        cantidad:parcial?(Math.round(r.proporcion*100)+'%'):'100%',
+        pvNeto:r.pagadoNeto.toFixed(2),
+        costo:r.costoProp.toFixed(2),
+        comision:r.comision.toFixed(2)
       });
     });
 
@@ -4445,222 +4533,256 @@ function _armarExcelComisiones(allDets){
   var hoyStr=hoy();
   var periodo=comFiltroMes==='todos'?'Todo el historico':comFiltroMes;
   function mesDe(f){ var d=pF(f||''); return isNaN(d)?'':d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
-  // Fechas anteriores a 2020 son marcadores de AppSheet (01/01/2001, etc.), no datos reales
   function fOk(f){ return f&&String(f)>='2020-01-01'&&String(f)<='2099-12-31'; }
   function dias(a,b){ if(!fOk(a)||!fOk(b)) return ''; return Math.round((pF(b)-pF(a))/86400000); }
-  var fechasMalas=0;
-  function pct(a,b){ return b?_r2(a/b*100):0; }
   function _r2(x){ return Math.round((parseFloat(x)||0)*100)/100; }
-  function formula(v){ return (v||'').toUpperCase()==='JHOSY'?'11% del margen':'(margen% - 20%) x 64% x PV neto'; }
+  function pct(a,b){ return b?_r2(a/b*100):0; }
+  function _limpio(a){ return a.filter(function(x){return typeof x==='number'&&Math.abs(x)<=365;}); }
+  function prom(a){ a=_limpio(a); return a.length?_r2(a.reduce(function(s,x){return s+x;},0)/a.length):''; }
 
-  // Ventas del período: mismo criterio que la pantalla (COMPLETADO, mes de pago)
-  var vs=ventas.filter(function(v){
-    return v.estado==='COMPLETADO'&&(comFiltroMes==='todos'||mesDe(v.fecha_pago_real||v.fecha)===comFiltroMes);
-  });
   var detPorVenta={};
   allDets.forEach(function(d){ (detPorVenta[d.venta_id]=detPorVenta[d.venta_id]||[]).push(d); });
 
-  // ── Recorrido principal: una fila por línea de producto ──
-  var det=[['Nº venta','Fecha venta','Mes de pago','F. estimada pago','F. pago real','Desfase pago (días)',
-            'Días de cobro','Vendedor','Cliente','Código','Producto','Categoría','Cantidad',
-            'PV unit. c/IGV','PV unit. neto','Costo unit.','Venta neta','Costo total','Margen S/','Margen %',
-            'Comisión S/','Comisión % venta','Comisión % margen','Utilidad tras comisión','Comisión registrada','Diferencia','Fórmula','Alerta']];
-  var V={},P={},C={},cob=[],bajo=[];
-  var T={vn:0,cost:0,com:0,lin:0,ventas:0,diasCob:[],desf:[],aTiempo:0,conEst:0};
+  // La comision se devenga con el COBRO. El mes de una venta es el de
+  // su fecha de pago real; si aun debe, el del ultimo pago recibido.
+  function mesComision(v){
+    var fr=fechaPagoReal(v);
+    if(fOk(fr)) return mesDe(fr);
+    var abs=_abonosDe(v.id);
+    if(abs.length){ var u=abs[abs.length-1].fecha||''; if(fOk(u)) return mesDe(u); }
+    return '';
+  }
+
+  var vs=ventas.filter(function(v){
+    if(v.estado==='ANULADO') return false;
+    if(_pagadoDe(v.id)<=0) return false;          // sin cobro no hay comision
+    return comFiltroMes==='todos'||mesComision(v)===comFiltroMes;
+  });
+
+  // ── Una fila por VENTA: asi se audita el calculo completo ──
+  var cab=[['ID_VENTA','FECHA','MES_COMISION','VENDEDOR','CLIENTE','ESTADO','ESTADO_PAGO',
+            'FECHA_ESTIMADA_PAGO','FECHA_PAGO_REAL','DESFASE_PAGO_DIAS','DIAS_DE_COBRO',
+            'TOTAL_FACTURADO','PAGADO_REAL','SALDO','% COBRADO',
+            'Nº_PRODUCTOS','COSTO_TOTAL_PEDIDO','COSTO_PROPORCIONAL',
+            'COBRADO_NETO','MARGEN_S','MARGEN_%','COMISION','COMISION_%_COBRADO',
+            'UTILIDAD_TRAS_COMISION','FORMULA','ALERTA']];
+  var V={},C={},P={},M={};
+  var T={fact:0,pag:0,neto:0,costo:0,com:0,n:0,completas:0,parciales:0,dc:[],df:[],at:0,ce:0};
+  var alertas=[];
+
   vs.forEach(function(v){
+    var dets=detPorVenta[v.id]||[];
+    var r=calcComisionVenta(v,dets);
     var cl=clis.find(function(x){return x.id===v.cliente_id;});
     var nom=cl?(cl.nombres||cl.alias||v.cliente_id):(v.cliente_id||'Sin cliente');
     var vend=v.vendedor||'—';
-    var fPago=fOk(v.fecha_pago_real)?v.fecha_pago_real:'';
-    if(v.fecha_pago_real&&!fOk(v.fecha_pago_real)) fechasMalas++;
-    var desf=dias(v.fecha_estimada_pago,fPago);
-    var dCob=dias(v.fecha,fPago);
-    var dets=detPorVenta[v.id]||[];
-    var vnVenta=0,comVenta=0,costVenta=0;
+    var fr=fechaPagoReal(v);
+    var saldo=r.facturado-r.pagado;
+    var completa=estaPagada(v);
+    var desf=dias(v.fecha_estimada_pago,fr);
+    var dCob=dias(v.fecha,fr);
+    var sinCosto=dets.some(function(d){ return !(_costoLinea(d)>0); });
+    var alerta='';
+    if(!dets.length) alerta='Venta sin productos registrados';
+    else if(sinCosto) alerta='Algun producto sin costo cargado';
+    else if(r.margenS<0) alerta='VENTA BAJO COSTO';
+    else if(r.comision===0&&vend.toUpperCase()!=='JHOSY') alerta='Margen bajo 20%: sin comision';
+    else if(!completa) alerta='Pago parcial: comision proporcional';
+
+    cab.push([v.id,v.fecha||'',mesComision(v),vend,nom,v.estado||'',getPS(r.facturado,r.pagado).toUpperCase(),
+      v.fecha_estimada_pago||'',fr,desf,dCob,
+      _r2(r.facturado),_r2(r.pagado),_r2(saldo),pct(r.pagado,r.facturado),
+      dets.length,_r2(r.costoTotal),_r2(r.costoProp),
+      _r2(r.pagadoNeto),_r2(r.margenS),_r2(r.margenPct),_r2(r.comision),pct(r.comision,r.pagadoNeto),
+      _r2(r.margenS-r.comision),r.formula,alerta]);
+
+    if(alerta&&alerta.indexOf('parcial')<0)
+      alertas.push([v.fecha||'',v.id,vend,nom,_r2(r.facturado),_r2(r.pagado),_r2(r.margenPct),_r2(r.comision),alerta]);
+
+    T.fact+=r.facturado; T.pag+=r.pagado; T.neto+=r.pagadoNeto;
+    T.costo+=r.costoProp; T.com+=r.comision; T.n++;
+    if(completa) T.completas++; else T.parciales++;
+    if(dCob!=='') T.dc.push(dCob);
+    if(desf!==''){ T.df.push(desf); T.ce++; if(desf<=0) T.at++; }
+
+    var kv=V[vend]=V[vend]||{fact:0,pag:0,neto:0,costo:0,com:0,n:0,comp:0,parc:0,cli:{},dc:[],df:[],at:0,ce:0,cero:0};
+    kv.fact+=r.facturado; kv.pag+=r.pagado; kv.neto+=r.pagadoNeto; kv.costo+=r.costoProp;
+    kv.com+=r.comision; kv.n++; kv.cli[nom]=1;
+    if(completa) kv.comp++; else kv.parc++;
+    if(r.comision===0) kv.cero++;
+    if(dCob!=='') kv.dc.push(dCob);
+    if(desf!==''){ kv.df.push(desf); kv.ce++; if(desf<=0) kv.at++; }
+
+    var kc=C[nom]=C[nom]||{fact:0,pag:0,neto:0,costo:0,com:0,n:0,dc:[],df:[],vend:{}};
+    kc.fact+=r.facturado; kc.pag+=r.pagado; kc.neto+=r.pagadoNeto; kc.costo+=r.costoProp;
+    kc.com+=r.comision; kc.n++; kc.vend[vend]=1;
+    if(dCob!=='') kc.dc.push(dCob);
+    if(desf!=='') kc.df.push(desf);
+
+    var km=mesComision(v)||'(sin fecha)';
+    var kM=M[km]=M[km]||{fact:0,pag:0,neto:0,costo:0,com:0,n:0};
+    kM.fact+=r.facturado; kM.pag+=r.pagado; kM.neto+=r.pagadoNeto; kM.costo+=r.costoProp; kM.com+=r.comision; kM.n++;
+
+    // Aporte de cada producto al pedido (para ver que arrastra el margen)
     dets.forEach(function(d){
       var pr=prods.find(function(p){return p.id===d.producto_id;})||{};
-      var q=parseFloat(d.cantidad||0), pv=parseFloat(d.precio_final||0), pvn=pv/1.18;
-      var cu=_costoLinea(d);
-      var vn=pvn*q, ct=cu*q, mg=vn-ct, mgp=pvn?(pvn-cu)/pvn*100:0;
-      var com=calcComision(v.vendedor,pv,cu,q);
-      var reg=parseFloat(d.comision||0);
-      var alerta='';
-      if(cu<=0) alerta='Producto sin costo cargado';
-      else if(mg<0) alerta='VENTA BAJO COSTO';
-      else if(com===0&&(vend||'').toUpperCase()!=='JHOSY') alerta='Margen bajo el 20%: sin comisión';
-      det.push([v.id,v.fecha||'',mesDe(fPago||v.fecha),v.fecha_estimada_pago||'',fPago,desf,dCob,vend,nom,
-        _codProd(pr),pr.nombre||d.producto_id,pr.categoria||'',q,_r2(pv),_r2(pvn),_r2(cu),_r2(vn),_r2(ct),
-        _r2(mg),_r2(mgp),_r2(com),pct(com,vn),pct(com,mg),_r2(mg-com),_r2(reg),_r2(com-reg),formula(v.vendedor),alerta]);
-      if(alerta&&alerta!=='Producto sin costo cargado') bajo.push([v.fecha||'',vend,nom,pr.nombre||d.producto_id,q,_r2(pv),_r2(pr.precio||0),
-        _r2(parseFloat(pr.precio||0)-pv),_r2(cu),_r2(mgp),_r2(com),alerta]);
-      // agregados
-      var kv=V[vend]=V[vend]||{vn:0,ct:0,com:0,n:{},lin:0,cero:0,dc:[],df:[],at:0,ce:0,cli:{}};
-      kv.vn+=vn;kv.ct+=ct;kv.com+=com;kv.lin++;kv.n[v.id]=1;kv.cli[nom]=1;if(com===0) kv.cero++;
-      var kp=P[pr.nombre||d.producto_id]=P[pr.nombre||d.producto_id]||{cat:pr.categoria||'',q:0,vn:0,ct:0,com:0,cod:_codProd(pr),vend:{}};
-      kp.q+=q;kp.vn+=vn;kp.ct+=ct;kp.com+=com;kp.vend[vend]=1;
-      var kc=C[nom]=C[nom]||{vn:0,ct:0,com:0,n:{},dc:[],df:[],vend:{}};
-      kc.vn+=vn;kc.ct+=ct;kc.com+=com;kc.n[v.id]=1;kc.vend[vend]=1;
-      T.vn+=vn;T.cost+=ct;T.com+=com;T.lin++;
-      vnVenta+=vn;comVenta+=com;costVenta+=ct;
+      var nomP=pr.nombre||d.producto_id;
+      var kp=P[nomP]=P[nomP]||{cod:_codProd(pr),cat:pr.categoria||'',q:0,vn:0,ct:0,com:0};
+      var q=parseFloat(d.cantidad||0);
+      var vnLinea=(parseFloat(d.precio_final||0)/1.18)*q*r.proporcion;
+      var ctLinea=_costoLinea(d)*q*r.proporcion;
+      kp.q+=q*r.proporcion; kp.vn+=vnLinea; kp.ct+=ctLinea;
+      // comision del pedido repartida a prorrata del margen de cada linea
+      kp.com+=r.margenS>0?(r.comision*((vnLinea-ctLinea)/r.margenS)):0;
     });
-    T.ventas++;
-    var kv2=V[vend]; if(kv2){ if(dCob!=='') kv2.dc.push(dCob); if(desf!==''){kv2.df.push(desf);kv2.ce++; if(desf<=0) kv2.at++;} }
-    var kc2=C[nom]; if(kc2){ if(dCob!=='') kc2.dc.push(dCob); if(desf!=='') kc2.df.push(desf); }
-    if(dCob!=='') T.diasCob.push(dCob);
-    if(desf!==''){ T.desf.push(desf); T.conEst++; if(desf<=0) T.aTiempo++; }
-    var est=desf===''?'Sin fecha estimada':(desf>0?'TARDE':(desf<0?'ANTICIPADO':'A TIEMPO'));
-    cob.push([v.id,v.fecha||'',v.fecha_estimada_pago||'',fPago,desf,dCob,est,vend,nom,v.forma_pago||'',
-      _r2(parseFloat(v.total||0)),_r2(vnVenta),_r2(comVenta)]);
   });
-  function _limpio(a){ return a.filter(function(x){return typeof x==='number'&&Math.abs(x)<=365;}); }
-  function prom(a){ a=_limpio(a); return a.length?_r2(a.reduce(function(s,x){return s+x;},0)/a.length):''; }
-  function med(a){ a=_limpio(a); if(!a.length) return ''; var b=a.slice().sort(function(x,y){return x-y;}); var m=Math.floor(b.length/2); return b.length%2?b[m]:_r2((b[m-1]+b[m])/2); }
 
-  // ── Cartera pendiente (no pagadas, independiente del filtro de mes) ──
-  var cart=[['Nº venta','Fecha venta','F. estimada pago','Días vencida','Antigüedad (días)','Tramo','Vendedor','Cliente','Total S/','Abonado S/','Saldo S/','Comisión en juego S/']];
-  var tramos={'Por vencer':0,'1-15 días':0,'16-30 días':0,'31-60 días':0,'Más de 60':0,'Sin fecha estimada':0};
-  var saldoTot=0;
-  ventas.filter(function(v){return v.estado!=='COMPLETADO'&&v.estado!=='ANULADO';}).forEach(function(v){
-    var tot=parseFloat(v.total||0), ab=getAb(v.id), sal=tot-ab;
-    if(sal<=0.01) return;
-    var cl=clis.find(function(x){return x.id===v.cliente_id;});
-    var venc=fOk(v.fecha_estimada_pago)?dias(v.fecha_estimada_pago,hoyStr):'';
-    var tr=venc===''?'Sin fecha estimada':(venc<=0?'Por vencer':(venc<=15?'1-15 días':(venc<=30?'16-30 días':(venc<=60?'31-60 días':'Más de 60'))));
-    tramos[tr]+=sal; saldoTot+=sal;
-    var comJ=(detPorVenta[v.id]||[]).reduce(function(s,d){
-      var pr=prods.find(function(p){return p.id===d.producto_id;})||{};
-      return s+calcComision(v.vendedor,parseFloat(d.precio_final||0),_costoLinea(d),parseFloat(d.cantidad||0));
-    },0);
-    cart.push([v.id,v.fecha||'',v.fecha_estimada_pago||'',venc,dias(v.fecha,hoyStr),tr,v.vendedor||'',
-      cl?(cl.nombres||cl.alias||''):'',_r2(tot),_r2(ab),_r2(sal),_r2(comJ)]);
-  });
-  cart.sort&&(cart=[cart[0]].concat(cart.slice(1).sort(function(a,b){return (b[3]||-9999)-(a[3]||-9999);})));
-
-  // ── Resumen ──
-  var mg=T.vn-T.cost;
+  var margenTot=T.neto-T.costo;
   var res=[
-    ['ANÁLISIS DE COMISIONES Y RENTABILIDAD',''],
-    ['Período',periodo],
+    ['ANALISIS DE COMISIONES — sobre lo COBRADO',''],
+    ['Periodo',periodo],
     ['Generado',hoyStr],
-    ['Criterio','Ventas COMPLETADAS, agrupadas por mes de pago'],
     ['',''],
-    ['VENTAS',''],
-    ['Ventas cobradas (nº)',T.ventas],
-    ['Líneas de producto',T.lin],
-    ['Venta neta (sin IGV) S/',_r2(T.vn)],
-    ['Ticket promedio neto S/',T.ventas?_r2(T.vn/T.ventas):0],
+    ['COMO SE CALCULA AHORA',''],
+    ['1. Se toma el monto REALMENTE PAGADO de cada venta',''],
+    ['2. El margen sale del PEDIDO COMPLETO, no de cada producto',''],
+    ['3. El costo se prorratea igual que el pago (si pago 50%, cuenta 50% del costo)',''],
+    ['4. Formula: (margen% - 20%) x 64% x cobrado neto    ·   Jhosy: 11% del margen',''],
+    ['5. Un pago parcial genera comision parcial, en la misma proporcion',''],
     ['',''],
-    ['RENTABILIDAD',''],
-    ['Costo de lo vendido S/',_r2(T.cost)],
-    ['Margen bruto S/',_r2(mg)],
-    ['Margen bruto %',pct(mg,T.vn)],
-    ['Comisiones S/',_r2(T.com)],
-    ['Comisión % sobre venta',pct(T.com,T.vn)],
-    ['Comisión % sobre margen',pct(T.com,mg)],
-    ['Utilidad tras comisión S/',_r2(mg-T.com)],
-    ['Utilidad tras comisión %',pct(mg-T.com,T.vn)],
+    ['Tolerancia de redondeo','S/ '+TOL_PAGO.toFixed(2)+' — si falta eso o menos, la venta se da por pagada'],
+    ['',''],
+    ['VENTAS DEL PERIODO (con algun cobro)',''],
+    ['Ventas',T.n],
+    ['  canceladas por completo',T.completas],
+    ['  con pago parcial',T.parciales],
+    ['Facturado S/',_r2(T.fact)],
+    ['COBRADO S/',_r2(T.pag)],
+    ['Saldo por cobrar de esas ventas S/',_r2(T.fact-T.pag)],
+    ['% cobrado',pct(T.pag,T.fact)],
+    ['',''],
+    ['RENTABILIDAD SOBRE LO COBRADO',''],
+    ['Cobrado neto (sin IGV) S/',_r2(T.neto)],
+    ['Costo proporcional S/',_r2(T.costo)],
+    ['Margen S/',_r2(margenTot)],
+    ['Margen %',pct(margenTot,T.neto)],
+    ['COMISION A PAGAR S/',_r2(T.com)],
+    ['Comision % sobre cobrado neto',pct(T.com,T.neto)],
+    ['Comision % sobre margen',pct(T.com,margenTot)],
+    ['Utilidad tras comision S/',_r2(margenTot-T.com)],
     ['',''],
     ['COBRANZA',''],
-    ['Días de cobro promedio',prom(T.diasCob)],
-    ['Días de cobro mediana',med(T.diasCob)],
-    ['Ventas con fecha estimada de pago',T.conEst+' de '+T.ventas],
-    ['Pagadas a tiempo o antes',T.aTiempo],
-    ['% cumplimiento de pago',T.conEst?pct(T.aTiempo,T.conEst):'sin datos'],
-    ['Desfase promedio vs estimado (días)',prom(T.desf)],
+    ['Dias de cobro promedio',prom(T.dc)],
+    ['Ventas con fecha estimada de pago',T.ce+' de '+T.n],
+    ['Pagadas a tiempo o antes',T.at],
+    ['% cumplimiento de pago',T.ce?pct(T.at,T.ce):'sin datos'],
+    ['Desfase promedio vs estimado (dias)',prom(T.df)],
     ['',''],
-    ['CARTERA PENDIENTE (hoy, todo el histórico)',''],
-    ['Saldo por cobrar S/',_r2(saldoTot)]
+    ['ALERTAS',''],
+    ['Ventas con algo que revisar',alertas.length]
   ];
-  Object.keys(tramos).forEach(function(k){ res.push(['  '+k+' S/',_r2(tramos[k])]); });
-  res.push(['','']);
-  res.push(['ALERTAS','']);
-  res.push(['Líneas bajo el umbral o bajo costo',bajo.length]);
-  res.push(['Productos vendidos sin costo cargado',det.slice(1).filter(function(r){return r[27]==='Producto sin costo cargado';}).length]);
-  res.push(['Ventas con fecha de pago inválida (ignorada)',fechasMalas]);
-  res.push(['','']);
-  res.push(['NOTAS','']);
-  res.push(['· La comisión se calcula con el COSTO ACTUAL del producto. Si el costo cambió','']);
-  res.push(['  después de la venta, la comisión mostrada cambia también.','']);
-  res.push(['· "Comisión registrada" es la guardada al momento de la venta. La columna','']);
-  res.push(['  "Diferencia" muestra cuánto se aparta del cálculo actual.','']);
-  res.push(['· Muchas ventas históricas no tienen fecha estimada de pago: el desfase','']);
-  res.push(['  solo se calcula donde ese dato existe.','']);
-  res.push(['· Fechas anteriores a 2020 (ej. 01/01/2001) son marcadores de AppSheet','']);
-  res.push(['  y se ignoran. Los promedios excluyen diferencias mayores a 365 días.','']);
 
-  // ── Por vendedor ──
-  var pv=[['Vendedor','Ventas (nº)','Clientes','Venta neta S/','Costo S/','Margen S/','Margen %','Comisión S/','Comisión % venta',
-           'Utilidad tras comisión S/','Ticket prom. S/','Participación % venta','Días cobro prom.','Desfase prom. (días)','% pago a tiempo','Líneas sin comisión','Fórmula']];
-  Object.keys(V).sort(function(a,b){return V[b].vn-V[a].vn;}).forEach(function(k){
-    var x=V[k], n=Object.keys(x.n).length, m=x.vn-x.ct;
-    pv.push([k,n,Object.keys(x.cli).length,_r2(x.vn),_r2(x.ct),_r2(m),pct(m,x.vn),_r2(x.com),pct(x.com,x.vn),
-      _r2(m-x.com),n?_r2(x.vn/n):0,pct(x.vn,T.vn),prom(x.dc),prom(x.df),x.ce?pct(x.at,x.ce):'sin datos',x.cero,formula(k)]);
+  var pv=[['VENDEDOR','VENTAS','CANCELADAS','PARCIALES','CLIENTES','FACTURADO','COBRADO','% COBRADO',
+           'COBRADO_NETO','COSTO','MARGEN_S','MARGEN_%','COMISION','COMISION_%_COBRADO',
+           'UTILIDAD_TRAS_COMISION','DIAS_COBRO_PROM','% PAGO_A_TIEMPO','SIN_COMISION','FORMULA']];
+  Object.keys(V).sort(function(a,b){return V[b].com-V[a].com;}).forEach(function(k){
+    var x=V[k], mg=x.neto-x.costo;
+    pv.push([k,x.n,x.comp,x.parc,Object.keys(x.cli).length,_r2(x.fact),_r2(x.pag),pct(x.pag,x.fact),
+      _r2(x.neto),_r2(x.costo),_r2(mg),pct(mg,x.neto),_r2(x.com),pct(x.com,x.neto),
+      _r2(mg-x.com),prom(x.dc),x.ce?pct(x.at,x.ce):'sin datos',x.cero,
+      (k||'').toUpperCase()==='JHOSY'?'11% del margen cobrado':'(margen% - 20%) x 64% x cobrado neto']);
   });
-  pv.push(['TOTAL',T.ventas,'',_r2(T.vn),_r2(T.cost),_r2(mg),pct(mg,T.vn),_r2(T.com),pct(T.com,T.vn),_r2(mg-T.com),
-    T.ventas?_r2(T.vn/T.ventas):0,100,prom(T.diasCob),prom(T.desf),T.conEst?pct(T.aTiempo,T.conEst):'','','']);
+  pv.push(['TOTAL',T.n,T.completas,T.parciales,'',_r2(T.fact),_r2(T.pag),pct(T.pag,T.fact),
+    _r2(T.neto),_r2(T.costo),_r2(margenTot),pct(margenTot,T.neto),_r2(T.com),pct(T.com,T.neto),
+    _r2(margenTot-T.com),prom(T.dc),T.ce?pct(T.at,T.ce):'','','']);
 
-  // ── Por producto ──
-  var pp=[['Código','Producto','Categoría','Unidades','Venta neta S/','Costo S/','Margen S/','Margen %','Comisión S/',
-           'Comisión % margen','Utilidad tras comisión S/','Precio neto prom. S/','Costo unit. S/','Participación % venta','Vendedores']];
-  Object.keys(P).sort(function(a,b){return P[b].vn-P[a].vn;}).forEach(function(k){
-    var x=P[k], m=x.vn-x.ct;
-    pp.push([x.cod,k,x.cat,_r2(x.q),_r2(x.vn),_r2(x.ct),_r2(m),pct(m,x.vn),_r2(x.com),pct(x.com,m),_r2(m-x.com),
-      x.q?_r2(x.vn/x.q):0,x.q?_r2(x.ct/x.q):0,pct(x.vn,T.vn),Object.keys(x.vend).join(', ')]);
-  });
-
-  // ── Por cliente ──
-  var pc=[['Cliente','Compras (nº)','Venta neta S/','Margen S/','Margen %','Comisión S/','Ticket prom. S/',
-           'Días cobro prom.','Desfase prom. (días)','Participación % venta','Vendedores']];
-  Object.keys(C).sort(function(a,b){return C[b].vn-C[a].vn;}).forEach(function(k){
-    var x=C[k], n=Object.keys(x.n).length, m=x.vn-x.ct;
-    pc.push([k,n,_r2(x.vn),_r2(m),pct(m,x.vn),_r2(x.com),n?_r2(x.vn/n):0,prom(x.dc),prom(x.df),pct(x.vn,T.vn),Object.keys(x.vend).join(', ')]);
-  });
-
-  // ── Por mes (tendencia) ──
-  var M={};
-  det.slice(1).forEach(function(r){
-    var k=r[2]||'—'; var x=M[k]=M[k]||{vn:0,ct:0,com:0,n:{}};
-    x.vn+=r[16];x.ct+=r[17];x.com+=r[20];x.n[r[0]]=1;
-  });
-  var pm=[['Mes de pago','Ventas (nº)','Venta neta S/','Margen S/','Margen %','Comisión S/','Comisión % venta','Utilidad tras comisión S/']];
+  var pm=[['MES_COMISION','VENTAS','FACTURADO','COBRADO','COBRADO_NETO','COSTO','MARGEN_S','MARGEN_%','COMISION','UTILIDAD_TRAS_COMISION']];
   Object.keys(M).sort().forEach(function(k){
-    var x=M[k], m=x.vn-x.ct;
-    pm.push([k,Object.keys(x.n).length,_r2(x.vn),_r2(m),pct(m,x.vn),_r2(x.com),pct(x.com,x.vn),_r2(m-x.com)]);
+    var x=M[k], mg=x.neto-x.costo;
+    pm.push([k,x.n,_r2(x.fact),_r2(x.pag),_r2(x.neto),_r2(x.costo),_r2(mg),pct(mg,x.neto),_r2(x.com),_r2(mg-x.com)]);
   });
 
-  var cobH=[['Nº venta','Fecha venta','F. estimada pago','F. pago real','Desfase (días)','Días de cobro','Estado del pago','Vendedor','Cliente','Forma pago','Total c/IGV S/','Venta neta S/','Comisión S/']];
-  cob.sort(function(a,b){return (b[4]===''?-9999:b[4])-(a[4]===''?-9999:a[4]);});
-  var bajoH=[['Fecha','Vendedor','Cliente','Producto','Cantidad','Precio vendido c/IGV','Precio lista c/IGV','Rebaja S/','Costo unit.','Margen %','Comisión S/','Alerta']];
+  var pc=[['CLIENTE','COMPRAS','FACTURADO','COBRADO','% COBRADO','COBRADO_NETO','MARGEN_S','MARGEN_%','COMISION','DIAS_COBRO_PROM','DESFASE_PROM','VENDEDORES']];
+  Object.keys(C).sort(function(a,b){return C[b].pag-C[a].pag;}).forEach(function(k){
+    var x=C[k], mg=x.neto-x.costo;
+    pc.push([k,x.n,_r2(x.fact),_r2(x.pag),pct(x.pag,x.fact),_r2(x.neto),_r2(mg),pct(mg,x.neto),_r2(x.com),prom(x.dc),prom(x.df),Object.keys(x.vend).join(', ')]);
+  });
 
-  // ── Armar libro ──
+  var pp=[['CODIGO','PRODUCTO','CATEGORIA','UNIDADES_COBRADAS','VENTA_NETA','COSTO','MARGEN_S','MARGEN_%','COMISION_PRORRATEADA']];
+  Object.keys(P).sort(function(a,b){return P[b].vn-P[a].vn;}).forEach(function(k){
+    var x=P[k], mg=x.vn-x.ct;
+    pp.push([x.cod,k,x.cat,_r2(x.q),_r2(x.vn),_r2(x.ct),_r2(mg),pct(mg,x.vn),_r2(x.com)]);
+  });
+
+  // Cartera: lo que falta cobrar (no genera comision todavia)
+  var cart=[['ID_VENTA','FECHA','FECHA_ESTIMADA_PAGO','DIAS_VENCIDA','TRAMO','VENDEDOR','CLIENTE',
+             'TOTAL','PAGADO','SALDO','COMISION_YA_DEVENGADA','COMISION_SI_SE_COBRA_TODO']];
+  var tramos={'Por vencer':0,'1-15 dias':0,'16-30 dias':0,'31-60 dias':0,'Mas de 60':0,'Sin fecha estimada':0};
+  var saldoTot=0, comPend=0;
+  ventas.filter(function(v){ return v.estado!=='ANULADO'&&!estaPagada(v); }).forEach(function(v){
+    var tot=parseFloat(v.total||0), pag=_pagadoDe(v.id), sal=tot-pag;
+    if(sal<=0.01) return;
+    var dets=detPorVenta[v.id]||[];
+    var rHoy=calcComisionVenta(v,dets);
+    var vFull=Object.assign({},v);
+    var rFull=(function(){
+      var costoTot=0; dets.forEach(function(d){ costoTot+=_costoLinea(d)*parseFloat(d.cantidad||0); });
+      var pn=tot/1.18, mg=pn-costoTot, mp=pn>0?mg/pn*100:0;
+      var c=(v.vendedor||'').toUpperCase()==='JHOSY'?Math.max(0,mg*0.11):Math.max(0,(mp/100-0.20)*0.64*pn);
+      return c;
+    })();
+    var cl=clis.find(function(x){return x.id===v.cliente_id;});
+    var venc=fOk(v.fecha_estimada_pago)?dias(v.fecha_estimada_pago,hoyStr):'';
+    var tr=venc===''?'Sin fecha estimada':(venc<=0?'Por vencer':(venc<=15?'1-15 dias':(venc<=30?'16-30 dias':(venc<=60?'31-60 dias':'Mas de 60'))));
+    tramos[tr]+=sal; saldoTot+=sal; comPend+=(rFull-rHoy.comision);
+    cart.push([v.id,v.fecha||'',v.fecha_estimada_pago||'',venc,tr,v.vendedor||'',
+      cl?(cl.nombres||cl.alias||''):'',_r2(tot),_r2(pag),_r2(sal),_r2(rHoy.comision),_r2(rFull)]);
+  });
+  cart=[cart[0]].concat(cart.slice(1).sort(function(a,b){return (b[3]===''?-9999:b[3])-(a[3]===''?-9999:a[3]);}));
+  res.push(['','']);
+  res.push(['CARTERA PENDIENTE (hoy, todo el historico)','']);
+  res.push(['Saldo por cobrar S/',_r2(saldoTot)]);
+  Object.keys(tramos).forEach(function(k){ res.push(['  '+k+' S/',_r2(tramos[k])]); });
+  res.push(['Comision que se pagaria si se cobra todo S/',_r2(comPend)]);
+
+  var al=[['FECHA','ID_VENTA','VENDEDOR','CLIENTE','FACTURADO','PAGADO','MARGEN_%','COMISION','ALERTA']];
+
   var wb=XLSX.utils.book_new();
-  function hoja(nombre,aoa,anchos,filtro){
+  function hoja(nombre,aoa,anchos){
     var ws=XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols']=anchos.map(function(w){return {wch:w};});
-    if(filtro&&aoa.length>1) ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:0,c:aoa[0].length-1}})};
+    if(aoa.length>1) ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:0,c:aoa[0].length-1}})};
+    ws['!freeze']={xSplit:0,ySplit:1};
     XLSX.utils.book_append_sheet(wb,ws,nombre);
   }
-  hoja('Resumen',res,[48,22],false);
-  hoja('Por vendedor',pv,[12,10,9,13,12,12,9,12,11,15,12,12,12,13,12,12,26],true);
-  hoja('Por producto',pp,[11,36,12,9,13,12,12,9,12,12,15,13,11,12,20],true);
-  hoja('Por cliente',pc,[34,10,13,12,9,12,12,12,13,12,20],true);
-  hoja('Por mes',pm,[12,10,13,12,9,12,12,15],true);
-  hoja('Cobranza y desfase',cobH.concat(cob),[11,12,14,12,11,11,17,11,30,13,12,12,11],true);
-  hoja('Cartera pendiente',cart,[11,12,14,11,12,17,11,30,11,11,11,13],true);
-  hoja('Alertas de margen',bajoH.concat(bajo),[12,11,28,34,9,13,13,10,10,9,10,30],true);
-  hoja('Detalle',det,[11,12,11,13,12,12,10,11,28,11,34,12,8,10,10,10,11,11,11,9,11,11,11,13,12,10,26,30],true);
+  hoja('Resumen',res,[52,26]);
+  hoja('Por vendedor',pv,[12,8,11,10,9,12,12,10,13,11,11,9,11,15,19,15,15,12,34]);
+  hoja('Comision por venta',cab,[12,12,13,11,30,12,13,19,16,13,12,14,12,11,10,12,18,18,14,11,10,11,15,19,34,30]);
+  hoja('Por mes',pm,[13,8,13,12,13,11,11,9,12,19]);
+  hoja('Por cliente',pc,[32,9,12,12,10,13,11,9,11,15,13,20]);
+  hoja('Por producto',pp,[11,36,13,17,13,11,11,9,19]);
+  hoja('Cartera pendiente',cart,[12,12,19,13,17,11,30,11,11,11,20,22]);
+  hoja('Alertas',al.concat(alertas),[12,12,11,30,12,12,10,11,32]);
 
-  var nombre='Comisiones_Analisis_'+(comFiltroMes==='todos'?'historico':comFiltroMes)+'_'+hoyStr+'.xlsx';
+  var nombre='Comisiones_'+(comFiltroMes==='todos'?'historico':comFiltroMes)+'_'+hoyStr+'.xlsx';
   XLSX.writeFile(wb,nombre);
-  toast('✓ Excel generado: '+T.ventas+' ventas, '+bajo.length+' alertas','ok');
+  toast('✓ '+T.n+' ventas · comision S/ '+T.com.toFixed(2)+' ('+T.parciales+' con pago parcial)','ok');
 }
 
 // ── EXPORTAR COMISIONES PDF ───────────────────────────────
 async function exportComisionesPDF(){
   toast('Generando PDF...','');
   try{
-    const ventasCompletas=ventas.filter(v=>v.estado==='COMPLETADO'&&(comFiltroMes==='todos'||
-      (()=>{const d=pF(v.fecha_pago_real||v.fecha||'');return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`===comFiltroMes;})()));
+    // Mismo criterio que la pantalla y el Excel: ventas con algún cobro,
+    // agrupadas por el mes en que entró el dinero.
+    const _mcPDF=v=>{
+      const fr=fechaPagoReal(v);
+      let f=fr; if(!f){ const a=_abonosDe(v.id); f=a.length?(a[a.length-1].fecha||''):''; }
+      if(!f) return '';
+      const d=pF(f); return isNaN(d)?'':`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    };
+    const ventasCompletas=ventas.filter(v=>v.estado!=='ANULADO'&&_pagadoDe(v.id)>0&&
+      (comFiltroMes==='todos'||_mcPDF(v)===comFiltroMes));
     const allDets=await sbGet('detalle_ventas');
     const{jsPDF}=window.jspdf;
     const doc=new jsPDF({unit:'mm',format:'a4'});
@@ -4681,22 +4803,18 @@ async function exportComisionesPDF(){
       var vend=v.vendedor||'Sin vendedor';
       if(!comVend[vend]){comVend[vend]=0;detalleVend[vend]=[];}
       var dets=allDets.filter(function(d){return d.venta_id===v.id;});
-      dets.forEach(function(d){
-        var pr=prods.find(function(p){return p.id===d.producto_id;});
-        var costo=_costoLinea(d);
-        var pv=parseFloat(d.precio_final||0);
-        var com=calcComision(vend,pv,costo,parseFloat(d.cantidad||1));
-        var c=clis.find(function(x){return x.id===v.cliente_id;});
-        comVend[vend]+=com;
-        detalleVend[vend].push({
-          fecha:v.fecha_pago_real||v.fecha||'',
-          cliente:c?c.nombres||c.alias||'?':'?',
-          producto:pr?pr.nombre||d.producto_id:d.producto_id,
-          cantidad:d.cantidad,
-          pvNeto:(pv/1.18).toFixed(2),
-          costo:costo.toFixed(2),
-          comision:com.toFixed(2)
-        });
+      var r=calcComisionVenta(v,dets);
+      var c=clis.find(function(x){return x.id===v.cliente_id;});
+      comVend[vend]+=r.comision;
+      var parcial=!estaPagada(v);
+      detalleVend[vend].push({
+        fecha:fechaPagoReal(v)||v.fecha||'',
+        cliente:c?c.nombres||c.alias||'?':'?',
+        producto:dets.length+' prod.'+(parcial?' · PARCIAL '+Math.round(r.proporcion*100)+'%':''),
+        cantidad:'',
+        pvNeto:r.pagadoNeto.toFixed(2),
+        costo:r.costoProp.toFixed(2),
+        comision:r.comision.toFixed(2)
       });
     });
 
@@ -9328,26 +9446,32 @@ async function ejecutarExportExcel(){
 
         // ── Ventas ──
         if(inclVentas){
-          var vr=[['Nº venta','Fecha venta','Cliente','RUC/DNI','Vendedor','Forma de pago','Comprobante',
-                   'Estado','Estado despacho','Total facturado S/','Pagado real S/','Saldo por cobrar S/',
-                   'Estado de pago','Nº de pagos','Último pago','F. estimada pago','F. entrega','Observaciones']];
+          // Estructura original + FECHA_ESTIMADA_PAGO. FECHA_PAGO_REAL es
+          // el día en que la venta terminó de pagarse, no la de cada abono.
+          var vr=[['ID','FECHA','CLIENTE','RUC','VENDEDOR','FORMA_PAGO','COMPROBANTE','ESTADO',
+                   'TOTAL','ABONADO','PENDIENTE','ESTADO_PAGO','FECHA_ESTIMADA_PAGO',
+                   'FECHA_ENTREGA','FECHA_PAGO_REAL','OBSERVACIONES']];
           ventasFilt.forEach(function(v){
             var c=clis.find(function(x){return x.id===v.cliente_id;});
-            var ab=abDe(v.id), pg=ab.reduce(function(s,a){return s+parseFloat(a.monto||0);},0);
+            var pg=_pagadoDe(v.id);
             var tot=parseFloat(v.total||0);
-            var ult=ab.map(function(a){return a.fecha||'';}).sort().slice(-1)[0]||'';
             vr.push([v.id,v.fecha||'',c?(c.nombres||c.alias||''):'',c?(c.dni_ruc||''):'',
-              v.vendedor||'',v.forma_pago||'',v.comprobante||'',v.estado||'',v.estado_despacho||'',
-              _r4(tot),_r4(pg),_r4(tot-pg),getPS(tot,pg).toUpperCase(),ab.length,ult,
-              v.fecha_estimada_pago||'',v.fecha_entrega||'',(v.observaciones||'')]);
+              v.vendedor||'',v.forma_pago||'',v.comprobante||'',v.estado||'',
+              _r4(tot),_r4(pg),_r4(tot-pg),getPS(tot,pg).toUpperCase(),
+              v.fecha_estimada_pago||'',v.fecha_entrega||'',
+              fechaPagoReal(v),(v.observaciones||'')]);
           });
-          hoja('Ventas',vr,[12,12,32,13,11,13,13,12,15,16,14,16,13,10,12,15,12,40]);
+          hoja('Ventas',vr,[12,12,32,13,11,13,13,12,12,12,12,13,19,13,16,40]);
         }
 
         // ── Pagos: el dinero realmente recibido, por fecha de cobro ──
         if(inclPagos){
-          var pr=[['Fecha del pago','Monto pagado S/','Nº venta','Fecha venta','Cliente','RUC/DNI','Vendedor',
-                   'Forma de pago','Comprobante','Total de la venta S/','Pago nº','Pagado acumulado S/','Saldo S/','Estado de pago']];
+          // Una fila por abono. OJO: "Fecha del pago" es la de ESE abono.
+          // La fecha en que la venta quedó cancelada va en FECHA_PAGO_REAL,
+          // y solo se llena en el abono que la completó.
+          var pr=[['FECHA_DEL_PAGO','MONTO_PAGADO','TIPO_DE_PAGO','FECHA_PAGO_REAL','ID_VENTA','FECHA_VENTA',
+                   'CLIENTE','RUC','VENDEDOR','FORMA_PAGO','COMPROBANTE','TOTAL_VENTA',
+                   'PAGO_Nº','PAGADO_ACUMULADO','SALDO','ESTADO_PAGO','Nº_OPERACION']];
           var pagos=allAb.filter(function(a){ return enPeriodo(a.fecha||''); });
           pagos.sort(function(a,b){ return (a.fecha||'')<(b.fecha||'')?-1:1; });
           var totPagos=0;
@@ -9357,33 +9481,46 @@ async function ejecutarExportExcel(){
             var c=v?clis.find(function(x){return x.id===v.cliente_id;}):null;
             var hermanos=abDe(a.venta_id).sort(function(x,y){return (x.fecha||'')<(y.fecha||'')?-1:1;});
             var idx=hermanos.findIndex(function(x){return x.id===a.id;})+1;
-            var tot=v?parseFloat(v.total||0):0, acum=pagado(a.venta_id);
+            var tot=v?parseFloat(v.total||0):0, acum=_pagadoDe(a.venta_id);
             var monto=parseFloat(a.monto||0); totPagos+=monto;
-            pr.push([a.fecha||'',_r4(monto),a.venta_id,v?(v.fecha||''):'',
+            // Acumulado HASTA este pago, no el total de la venta
+            var acumAqui=0;
+            for(var z=0;z<hermanos.length&&z<idx;z++) acumAqui+=parseFloat(hermanos[z].monto||0);
+            var completa=v?_abonoQueCompleta(v,a.id):false;
+            var tipo=completa?(hermanos.length>1?'CANCELA (último)':'PAGO TOTAL'):'PARCIAL (a cuenta)';
+            pr.push([a.fecha||'',_r4(monto),tipo,
+              completa?fechaPagoReal(v):'',
+              a.venta_id,v?(v.fecha||''):'',
               c?(c.nombres||c.alias||''):'',c?(c.dni_ruc||''):'',v?(v.vendedor||''):'',
               v?(v.forma_pago||''):'',v?(v.comprobante||''):'',_r4(tot),
-              idx+' de '+hermanos.length,_r4(acum),_r4(tot-acum),getPS(tot,acum).toUpperCase()]);
+              idx+' de '+hermanos.length,_r4(acumAqui),_r4(tot-acumAqui),
+              getPS(tot,acumAqui).toUpperCase(),a.referencia||'']);
           });
           pr.push([]);
           pr.push(['TOTAL COBRADO EN EL PERÍODO',_r4(totPagos)]);
-          hoja('Pagos recibidos',pr,[15,16,12,12,32,13,11,13,13,18,10,18,12,14]);
+          hoja('Pagos recibidos',pr,[15,14,18,16,12,12,32,13,11,13,13,13,10,17,12,14,16]);
         }
 
         // ── Detalle por producto ──
         if(inclDetalle){
           var ids={}; ventasFilt.forEach(function(v){ ids[v.id]=1; });
-          var dr=[['Nº venta','Fecha venta','Cliente','Vendedor','Producto','Categoría','Cantidad',
-                   'Precio lista S/','Precio vendido S/','Total línea S/','Costo unit. S/','Comisión S/']];
+          // La comisión ya NO es por línea: se calcula sobre el pedido
+          // completo y lo cobrado. Por eso aquí va el costo de la línea
+          // y la comisión del pedido al que pertenece, no una por producto.
+          var dr=[['ID','VENTA_ID','FECHA','CLIENTE','VENDEDOR','PRODUCTO','CATEGORIA','CANTIDAD',
+                   'PRECIO_BASE','PRECIO_FINAL','TOTAL','COSTO_UNIT','COSTO_LINEA','COMISION_DEL_PEDIDO']];
           allDets.filter(function(d){return ids[d.venta_id];}).forEach(function(d){
             var v=ventas.find(function(x){return x.id===d.venta_id;});
             var c=v?clis.find(function(x){return x.id===v.cliente_id;}):null;
             var p=prods.find(function(x){return x.id===d.producto_id;});
-            dr.push([d.venta_id,v?(v.fecha||''):'',c?(c.nombres||c.alias||''):'',v?(v.vendedor||''):'',
+            var cu=_costoLinea(d), q=parseFloat(d.cantidad||0);
+            var cv=v?calcComisionVenta(v,allDets.filter(function(x){return x.venta_id===v.id;})):{comision:0};
+            dr.push([d.id,d.venta_id,v?(v.fecha||''):'',c?(c.nombres||c.alias||''):'',v?(v.vendedor||''):'',
               p?(p.nombre||d.producto_id):d.producto_id,p?(p.categoria||''):'',
-              parseFloat(d.cantidad||0),_r4(d.precio_base),_r4(d.precio_final),_r4(d.total),
-              _r4(_costoLinea(d)),_r4(d.comision)]);
+              q,_r4(d.precio_base),_r4(d.precio_final),_r4(d.total),
+              _r4(cu),_r4(cu*q),_r4(cv.comision)]);
           });
-          hoja('Detalle por producto',dr,[12,12,32,11,36,13,9,15,16,14,14,11]);
+          hoja('Detalle por producto',dr,[12,12,12,32,11,36,13,9,13,14,12,12,13,20]);
         }
 
         XLSX.writeFile(wb,'Ventas_y_Pagos_'+label+'.xlsx');
