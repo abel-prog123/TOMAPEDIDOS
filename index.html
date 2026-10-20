@@ -4330,30 +4330,128 @@ function _abonoQueCompleta(v,abonoId){
 // Devuelve el detalle del cálculo para poder auditarlo.
 function calcComisionVenta(v,dets){
   var r={facturado:0,pagado:0,pagadoNeto:0,costoTotal:0,costoProp:0,
-         margenS:0,margenPct:0,comision:0,proporcion:0,formula:''};
+         margenS:0,margenPct:0,comision:0,proporcion:0,formula:'',
+         regla:'NORMAL',alerta:''};
   if(!v||v.estado==='ANULADO') return r;
   var tot=parseFloat(v.total||0);
   var pagado=_pagadoDe(v.id);
-  if(pagado>tot) pagado=tot;              // sobrepagos no generan comisión extra
+  if(pagado>tot) pagado=tot;              // sobrepagos no generan comision extra
   r.facturado=tot; r.pagado=pagado;
   if(!(pagado>0)||!(tot>0)) return r;
 
   r.proporcion=pagado/tot;
   r.pagadoNeto=pagado/1.18;
+
+  // Venta sin productos registrados: el costo saldria 0 y el margen se
+  // leeria 100%, pagando comision sobre un margen que nadie verifico.
+  // No es que el costo sea cero, es que no se conoce. Sin detalle no hay
+  // comision hasta que se registren los productos.
+  if(!(dets||[]).length){
+    r.regla='SIN_DETALLE';
+    r.formula='Sin comision — la venta no tiene productos registrados';
+    r.alerta='VENTA SIN PRODUCTOS — registrar el detalle para que calcule';
+    return r;
+  }
+
   (dets||[]).forEach(function(d){
     r.costoTotal+=_costoLinea(d)*parseFloat(d.cantidad||0);
   });
   r.costoProp=r.costoTotal*r.proporcion;
-  r.margenS=r.pagadoNeto-r.costoProp;
+  r.margenS=r.pagadoNeto-r.costoProp;     // MC en soles
   r.margenPct=r.pagadoNeto>0?(r.margenS/r.pagadoNeto*100):0;
 
   var vNorm=(v.vendedor||'').toUpperCase();
   if(vNorm==='JHOSY'){
     r.comision=Math.max(0,r.margenS*0.11);
-    r.formula='11% del margen cobrado';
+    r.formula='11% del MC cobrado';
+    if(r.margenS<=0){ r.comision=r.pagadoNeto*0.01; r.regla='MC_NEGATIVO';
+      r.formula='1% del precio (MC negativo)'; r.alerta='MC NEGATIVO — revisar precio y costo'; }
+    return r;
+  }
+
+  // Formula normal
+  var normal=((r.margenPct/100)-0.20)*0.64*r.pagadoNeto;
+  if(normal>0){
+    r.comision=normal;
+    r.formula='(MC% - 20%) x 64% x cobrado neto';
+    r.regla='NORMAL';
+  } else if(r.margenS>0){
+    // Margen positivo pero bajo el umbral del 20%: piso del 30% del MC
+    r.comision=r.margenS*0.30;
+    r.formula='30% del MC (margen bajo 20%)';
+    r.regla='MC_BAJO';
+    r.alerta='MC bajo 20% — revisar precio de venta';
   } else {
-    r.comision=Math.max(0,((r.margenPct/100)-0.20)*0.64*r.pagadoNeto);
-    r.formula='(margen% - 20%) x 64% x cobrado neto';
+    // Vendio al costo o por debajo: minimo del 1% del precio
+    r.comision=r.pagadoNeto*0.01;
+    r.formula='1% del precio (MC negativo)';
+    r.regla='MC_NEGATIVO';
+    r.alerta='MC NEGATIVO — revisar precio y costo';
+  }
+  return r;
+}
+
+// ── Comision de UNA LINEA, con las mismas reglas de piso ──
+// Sirve para analizar que producto aporta y que producto resta.
+// NO es lo que se paga: lo que se paga es calcComisionVenta (el pedido
+// completo), porque el cobro es uno solo para todos sus productos.
+// prop = proporcion cobrada de la venta (0..1)
+function calcComisionLinea(d,vendedor,prop){
+  var r={qty:0,pvUnit:0,pvUnitNeto:0,totLinea:0,totNeto:0,cobradoNeto:0,
+         costoUnit:0,costoLinea:0,costoProp:0,margenS:0,margenPct:0,
+         formulaCruda:0,comision:0,regla:'NORMAL',formula:'',alerta:''};
+  if(!d) return r;
+  prop=(prop==null?1:prop);
+  r.qty=parseFloat(d.cantidad||0);
+  r.pvUnit=parseFloat(d.precio_final||0);
+  r.pvUnitNeto=r.pvUnit/1.18;
+  r.totLinea=r.pvUnit*r.qty;
+  r.totNeto=r.pvUnitNeto*r.qty;
+  r.costoUnit=_costoLinea(d);
+  r.costoLinea=r.costoUnit*r.qty;
+  r.cobradoNeto=r.totNeto*prop;
+  r.costoProp=r.costoLinea*prop;
+  r.margenS=r.cobradoNeto-r.costoProp;
+  r.margenPct=r.cobradoNeto>0?(r.margenS/r.cobradoNeto*100):0;
+
+  // Linea sin precio (muestra, bonificacion): no genera comision
+  if(!(r.cobradoNeto>0)){
+    r.regla='SIN_PRECIO'; r.formula='Linea sin precio — no genera comision';
+    r.alerta=r.qty>0?'Linea en S/ 0 (muestra o bonificacion)':'';
+    return r;
+  }
+  if(!(r.costoUnit>0)){
+    r.alerta='Producto sin costo cargado — el margen no es confiable';
+  }
+
+  var vNorm=(vendedor||'').toUpperCase();
+  if(vNorm==='JHOSY'){
+    r.formulaCruda=r.margenS*0.11;
+    if(r.margenS>0){
+      r.comision=r.formulaCruda; r.formula='11% del MC cobrado'; r.regla='NORMAL';
+    } else {
+      r.comision=r.cobradoNeto*0.01; r.regla='MC_NEGATIVO';
+      r.formula='1% del precio (MC negativo)';
+      r.alerta=(r.alerta?r.alerta+' · ':'')+'MC NEGATIVO — revisar precio y costo';
+    }
+    return r;
+  }
+
+  r.formulaCruda=((r.margenPct/100)-0.20)*0.64*r.cobradoNeto;
+  if(r.formulaCruda>0){
+    r.comision=r.formulaCruda;
+    r.formula='(MC% - 20%) x 64% x cobrado neto';
+    r.regla='NORMAL';
+  } else if(r.margenS>0){
+    r.comision=r.margenS*0.30;
+    r.formula='30% del MC (margen bajo 20%)';
+    r.regla='MC_BAJO';
+    r.alerta=(r.alerta?r.alerta+' · ':'')+'MC bajo 20% — revisar precio de venta';
+  } else {
+    r.comision=r.cobradoNeto*0.01;
+    r.formula='1% del precio (MC negativo)';
+    r.regla='MC_NEGATIVO';
+    r.alerta=(r.alerta?r.alerta+' · ':'')+'MC NEGATIVO — revisar precio y costo';
   }
   return r;
 }
@@ -4522,11 +4620,65 @@ async function exportComisiones(){
   toast('Preparando análisis de comisiones...','ok');
   try{
     var allDets=await sbGet('detalle_ventas');
-    _ensureXLSX(function(){
+    _ensureExcelJS(function(){
       try{ _armarExcelComisiones(allDets); }
       catch(e){ toast('Error al generar: '+e.message,'err'); console.error(e); }
     });
   }catch(e){ toast('Error: '+e.message,'err'); }
+}
+
+
+// ── ExcelJS: necesario para pintar celdas (SheetJS no escribe estilos) ──
+function _ensureExcelJS(cb){
+  if(window.ExcelJS) return cb();
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+  s.onload=function(){ cb(); };
+  s.onerror=function(){ toast('No se pudo cargar el exportador. Revisa tu conexión.','err'); };
+  document.head.appendChild(s);
+}
+// Paleta de alertas
+var COL_ALERTA={
+  MC_BAJO:    {fondo:'FFFEF3C7', texto:'FF92400E'},   // ámbar
+  MC_NEGATIVO:{fondo:'FFFEE2E2', texto:'FFB91C1C'},   // rojo
+  SIN_COSTO:  {fondo:'FFF3E8FF', texto:'FF6B21A8'},   // violeta
+  SIN_DETALLE:{fondo:'FFE5E7EB', texto:'FF374151'},   // gris
+  PARCIAL:    {fondo:'FFEFF6FF', texto:'FF1D4ED8'}    // azul
+};
+// Escribe un libro con estilos.
+// hojas = [{nombre, aoa, anchos, color(fila,i)->clave de COL_ALERTA|null, titulo}]
+async function _escribirLibroExcel(hojas,nombreArchivo){
+  var wb=new ExcelJS.Workbook();
+  wb.creator='TomaPedidos'; wb.created=new Date();
+  hojas.forEach(function(H){
+    var ws=wb.addWorksheet(H.nombre,{views:[{state:'frozen',ySplit:1}]});
+    (H.aoa||[]).forEach(function(fila,i){
+      var row=ws.addRow(fila);
+      if(i===0){
+        row.font={bold:true,color:{argb:'FFFFFFFF'},size:10};
+        row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF17254F'}};
+        row.alignment={vertical:'middle',horizontal:'center',wrapText:true};
+        row.height=26;
+      } else if(H.color){
+        var k=H.color(fila,i);
+        if(k&&COL_ALERTA[k]){
+          row.eachCell({includeEmpty:true},function(cell){
+            cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:COL_ALERTA[k].fondo}};
+            cell.font={color:{argb:COL_ALERTA[k].texto},bold:k==='MC_NEGATIVO'};
+          });
+        }
+      }
+    });
+    (H.anchos||[]).forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+    if((H.aoa||[]).length>1)
+      ws.autoFilter={from:{row:1,column:1},to:{row:1,column:H.aoa[0].length}};
+  });
+  var buf=await wb.xlsx.writeBuffer();
+  var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a'); a.href=url; a.download=nombreArchivo;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); },1500);
 }
 
 function _armarExcelComisiones(allDets){
@@ -4564,10 +4716,25 @@ function _armarExcelComisiones(allDets){
             'FECHA_ESTIMADA_PAGO','FECHA_PAGO_REAL','DESFASE_PAGO_DIAS','DIAS_DE_COBRO',
             'TOTAL_FACTURADO','PAGADO_REAL','SALDO','% COBRADO',
             'Nº_PRODUCTOS','COSTO_TOTAL_PEDIDO','COSTO_PROPORCIONAL',
-            'COBRADO_NETO','MARGEN_S','MARGEN_%','COMISION','COMISION_%_COBRADO',
-            'UTILIDAD_TRAS_COMISION','FORMULA','ALERTA']];
-  var V={},C={},P={},M={};
+            'COBRADO_NETO','MC_SOLES','MC_%','COMISION','COMISION_%_COBRADO',
+            'UTILIDAD_TRAS_COMISION','REGLA_APLICADA','FORMULA','ALERTA']];
+  // ── Una fila por PRODUCTO VENDIDO, agrupado por venta ──
+  // Mismo formato que el detalle que ya usaba administracion, mas las
+  // columnas del calculo de comision linea por linea.
+  var det=[['Nº_VENTA','FECHA','MES_COMISION','CLIENTE','RUC','VENDEDOR','COMPROBANTE','ESTADO_PAGO',
+            'Nº_LINEA','CODIGO','PRODUCTO','CATEGORIA','CANTIDAD',
+            'PRECIO_UNIT','PRECIO_UNIT_SIN_IGV','TOTAL_LINEA','TOTAL_LINEA_SIN_IGV',
+            '% DEL_PEDIDO','% COBRADO_VENTA','COBRADO_NETO_LINEA',
+            'COSTO_UNIT','COSTO_LINEA','COSTO_PROPORCIONAL',
+            'MC_SOLES','MC_%','FORMULA_SIN_PISO','REGLA','COMISION_LINEA',
+            'COMISION_LINEA_AJUSTADA','COMISION_%_SOBRE_LINEA',
+            'COMISION_VENTA_A_PAGAR','SUMA_COMISION_LINEAS','DIFERENCIA_LINEAS_VS_VENTA',
+            'FORMULA','ALERTA']];
+
+  var V={},C={},P={},M={},RG={},RGc={};
   var T={fact:0,pag:0,neto:0,costo:0,com:0,n:0,completas:0,parciales:0,dc:[],df:[],at:0,ce:0};
+  var TL={n:0,bajo:0,neg:0,sinPrecio:0,sinCosto:0,com:0,ajust:0,
+          sinCostoCom:0,sinCostoNeto:0,sinDetalle:0,sinDetalleCom:0};
   var alertas=[];
 
   vs.forEach(function(v){
@@ -4582,22 +4749,27 @@ function _armarExcelComisiones(allDets){
     var desf=dias(v.fecha_estimada_pago,fr);
     var dCob=dias(v.fecha,fr);
     var sinCosto=dets.some(function(d){ return !(_costoLinea(d)>0); });
-    var alerta='';
-    if(!dets.length) alerta='Venta sin productos registrados';
-    else if(sinCosto) alerta='Algun producto sin costo cargado';
-    else if(r.margenS<0) alerta='VENTA BAJO COSTO';
-    else if(r.comision===0&&vend.toUpperCase()!=='JHOSY') alerta='Margen bajo 20%: sin comision';
-    else if(!completa) alerta='Pago parcial: comision proporcional';
+    var alerta=r.alerta||'';
+    if(!dets.length){
+      TL.sinDetalle++;
+      // Lo que habria pagado leyendo el margen como 100%
+      TL.sinDetalleCom+=r.pagadoNeto*0.512;
+    }
+    else if(sinCosto) alerta=(alerta?alerta+' · ':'')+'Algun producto sin costo cargado';
+    if(!completa) alerta=(alerta?alerta+' · ':'')+'Pago parcial ('+Math.round(r.proporcion*100)+'%)';
 
     cab.push([v.id,v.fecha||'',mesComision(v),vend,nom,v.estado||'',getPS(r.facturado,r.pagado).toUpperCase(),
       v.fecha_estimada_pago||'',fr,desf,dCob,
       _r2(r.facturado),_r2(r.pagado),_r2(saldo),pct(r.pagado,r.facturado),
       dets.length,_r2(r.costoTotal),_r2(r.costoProp),
       _r2(r.pagadoNeto),_r2(r.margenS),_r2(r.margenPct),_r2(r.comision),pct(r.comision,r.pagadoNeto),
-      _r2(r.margenS-r.comision),r.formula,alerta]);
+      _r2(r.margenS-r.comision),r.regla,r.formula,alerta]);
 
-    if(alerta&&alerta.indexOf('parcial')<0)
-      alertas.push([v.fecha||'',v.id,vend,nom,_r2(r.facturado),_r2(r.pagado),_r2(r.margenPct),_r2(r.comision),alerta]);
+    if(r.regla!=='NORMAL'||sinCosto||!dets.length)
+      alertas.push([v.fecha||'',v.id,vend,nom,_r2(r.facturado),_r2(r.pagado),
+        _r2(r.costoProp),_r2(r.margenS),_r2(r.margenPct),_r2(r.comision),r.regla,alerta]);
+    RG[r.regla]=(RG[r.regla]||0)+1;
+    RGc[r.regla]=(RGc[r.regla]||0)+r.comision;
 
     T.fact+=r.facturado; T.pag+=r.pagado; T.neto+=r.pagadoNeto;
     T.costo+=r.costoProp; T.com+=r.comision; T.n++;
@@ -4623,17 +4795,53 @@ function _armarExcelComisiones(allDets){
     var kM=M[km]=M[km]||{fact:0,pag:0,neto:0,costo:0,com:0,n:0};
     kM.fact+=r.facturado; kM.pag+=r.pagado; kM.neto+=r.pagadoNeto; kM.costo+=r.costoProp; kM.com+=r.comision; kM.n++;
 
-    // Aporte de cada producto al pedido (para ver que arrastra el margen)
-    dets.forEach(function(d){
+    // ── Detalle linea por linea ──
+    // Primero se calcula cada linea por su cuenta, y despues se reescala
+    // para que la suma de las lineas cuadre exactamente con la comision
+    // que se paga por el pedido. Asi la hoja se puede sumar sin inventar
+    // plata, y a la vez se ve que producto arrastra el margen.
+    var lin=dets.map(function(d){ return calcComisionLinea(d,vend,r.proporcion); });
+    var sumaPropia=lin.reduce(function(s,L){ return s+L.comision; },0);
+    var sumaNeta=lin.reduce(function(s,L){ return s+L.cobradoNeto; },0);
+    var factor=sumaPropia>0?(r.comision/sumaPropia):0;
+
+    dets.forEach(function(d,ix){
+      var L=lin[ix];
       var pr=prods.find(function(p){return p.id===d.producto_id;})||{};
       var nomP=pr.nombre||d.producto_id;
+      // Ajustada: reparte la comision del pedido a prorrata de la comision
+      // propia de cada linea. Si ninguna linea genero comision pero el
+      // pedido si, se reparte por participacion en la venta.
+      var ajust=sumaPropia>0?(L.comision*factor)
+                            :(sumaNeta>0?(r.comision*(L.cobradoNeto/sumaNeta)):0);
+      var alertaL=L.alerta;
+      if(!completa) alertaL=(alertaL?alertaL+' · ':'')+'Pago parcial ('+Math.round(r.proporcion*100)+'%)';
+
+      det.push([v.id,v.fecha||'',mesComision(v),nom,(cl&&cl.ruc)||'',vend,
+        v.comprobante||'',getPS(r.facturado,r.pagado).toUpperCase(),
+        ix+1,_codProd(pr),nomP,pr.categoria||'',L.qty,
+        _r2(L.pvUnit),_r2(L.pvUnitNeto),_r2(L.totLinea),_r2(L.totNeto),
+        pct(L.totLinea,r.facturado),pct(r.pagado,r.facturado),_r2(L.cobradoNeto),
+        _r2(L.costoUnit),_r2(L.costoLinea),_r2(L.costoProp),
+        _r2(L.margenS),_r2(L.margenPct),_r2(L.formulaCruda),L.regla,_r2(L.comision),
+        _r2(ajust),pct(L.comision,L.cobradoNeto),
+        _r2(r.comision),_r2(sumaPropia),_r2(sumaPropia-r.comision),
+        L.formula,alertaL]);
+
+      TL.n++; TL.com+=L.comision; TL.ajust+=ajust;
+      if(L.regla==='MC_BAJO')      TL.bajo++;
+      if(L.regla==='MC_NEGATIVO')  TL.neg++;
+      if(L.regla==='SIN_PRECIO')   TL.sinPrecio++;
+      // Exposicion real: lineas cobradas cuyo producto no tiene costo.
+      // Ahi el margen se lee 100% y la comision sale inflada.
+      if(!(L.costoUnit>0)&&L.cobradoNeto>0){
+        TL.sinCosto++; TL.sinCostoCom+=ajust; TL.sinCostoNeto+=L.cobradoNeto;
+      }
+
+      // Aporte de cada producto al pedido (para ver que arrastra el margen)
       var kp=P[nomP]=P[nomP]||{cod:_codProd(pr),cat:pr.categoria||'',q:0,vn:0,ct:0,com:0};
-      var q=parseFloat(d.cantidad||0);
-      var vnLinea=(parseFloat(d.precio_final||0)/1.18)*q*r.proporcion;
-      var ctLinea=_costoLinea(d)*q*r.proporcion;
-      kp.q+=q*r.proporcion; kp.vn+=vnLinea; kp.ct+=ctLinea;
-      // comision del pedido repartida a prorrata del margen de cada linea
-      kp.com+=r.margenS>0?(r.comision*((vnLinea-ctLinea)/r.margenS)):0;
+      kp.q+=L.qty*r.proporcion; kp.vn+=L.cobradoNeto; kp.ct+=L.costoProp;
+      kp.com+=ajust;
     });
   });
 
@@ -4677,6 +4885,30 @@ function _armarExcelComisiones(allDets){
     ['Pagadas a tiempo o antes',T.at],
     ['% cumplimiento de pago',T.ce?pct(T.at,T.ce):'sin datos'],
     ['Desfase promedio vs estimado (dias)',prom(T.df)],
+    ['',''],
+    ['DETALLE POR PRODUCTO (hoja "Detalle comisiones")',''],
+    ['Lineas de venta',TL.n],
+    ['  con MC bajo 20% (ambar)',TL.bajo],
+    ['  con MC negativo (rojo)',TL.neg],
+    ['  sin precio — muestra o bonificacion',TL.sinPrecio],
+    ['Comision si se pagara linea por linea S/',_r2(TL.com)],
+    ['Comision que se paga (por pedido) S/',_r2(T.com)],
+    ['Diferencia S/',_r2(TL.com-T.com)],
+    ['Por que hay diferencia','El piso no es lineal: un producto malo dentro de un pedido bueno se compensa en el pedido, pero cobraria piso si se mirara solo'],
+    ['Columna que SI se puede sumar','COMISION_LINEA_AJUSTADA — reparte la comision del pedido entre sus productos'],
+    ['Suma de la columna ajustada S/',_r2(TL.ajust)],
+    ['',''],
+    ['⚠ COMISION QUE NO ES CONFIABLE TODAVIA',''],
+    ['Lineas cobradas cuyo producto NO tiene costo cargado (violeta)',TL.sinCosto],
+    ['  cobrado neto en esas lineas S/',_r2(TL.sinCostoNeto)],
+    ['  comision que generan S/',_r2(TL.sinCostoCom)],
+    ['  % de la comision total',pct(TL.sinCostoCom,TL.ajust)],
+    ['Que pasa ahi','Costo 0 no significa que sea gratis, significa que no se cargo. El margen se lee 100% y la comision sale inflada'],
+    ['Que hacer','Cargar esos costos en Stock > Costos ANTES de pagar comisiones'],
+    ['',''],
+    ['Ventas sin productos registrados (gris)',TL.sinDetalle],
+    ['  no generan comision','Antes pagaban 51.2% del neto porque el costo salia 0'],
+    ['  comision que habrian pagado S/',_r2(TL.sinDetalleCom)],
     ['',''],
     ['ALERTAS',''],
     ['Ventas con algo que revisar',alertas.length]
@@ -4745,28 +4977,108 @@ function _armarExcelComisiones(allDets){
   Object.keys(tramos).forEach(function(k){ res.push(['  '+k+' S/',_r2(tramos[k])]); });
   res.push(['Comision que se pagaria si se cobra todo S/',_r2(comPend)]);
 
-  var al=[['FECHA','ID_VENTA','VENDEDOR','CLIENTE','FACTURADO','PAGADO','MARGEN_%','COMISION','ALERTA']];
+  var al=[['FECHA','ID_VENTA','VENDEDOR','CLIENTE','FACTURADO','PAGADO','COSTO_PROP','MC_SOLES','MC_%','COMISION','REGLA','QUE_REVISAR']];
 
-  var wb=XLSX.utils.book_new();
-  function hoja(nombre,aoa,anchos){
-    var ws=XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols']=anchos.map(function(w){return {wch:w};});
-    if(aoa.length>1) ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:0,c:aoa[0].length-1}})};
-    ws['!freeze']={xSplit:0,ySplit:1};
-    XLSX.utils.book_append_sheet(wb,ws,nombre);
+  // Resumen de las reglas aplicadas, para el bloque del Resumen
+  res.push(['','']);
+  res.push(['REGLAS DE COMISION APLICADAS','']);
+  res.push(['  Formula normal (MC% sobre 20%)',(RG.NORMAL||0)+' ventas · S/ '+_r2(RGc.NORMAL||0)]);
+  res.push(['  Piso 30% del MC (margen bajo 20%)',(RG.MC_BAJO||0)+' ventas · S/ '+_r2(RGc.MC_BAJO||0)]);
+  res.push(['  Minimo 1% del precio (MC negativo)',(RG.MC_NEGATIVO||0)+' ventas · S/ '+_r2(RGc.MC_NEGATIVO||0)]);
+  res.push(['  >> Las dos ultimas van marcadas en color','ambar = MC bajo · rojo = MC negativo']);
+
+  // ── Resumen de cobranzas (como la dinamica de deuda) ──
+  var DV={},DC={};
+  ventas.filter(function(v){ return v.estado!=='ANULADO'&&!estaPagada(v); }).forEach(function(v){
+    var tot=parseFloat(v.total||0), pag=_pagadoDe(v.id), sal=tot-pag;
+    if(sal<=0.01) return;
+    var vend=v.vendedor||'(sin vendedor)';
+    var vencida=fOk(v.fecha_estimada_pago)&&v.fecha_estimada_pago<hoyStr;
+    var D=vencida?DV:DC;
+    if(!D[vend]) D[vend]={tot:0,ab:0,pen:0,n:0};
+    D[vend].tot+=tot; D[vend].ab+=pag; D[vend].pen+=sal; D[vend].n++;
+  });
+  function blqDeuda(titulo,D){
+    var out=[[titulo,'','','',''],['VENDEDOR','VENTAS','TOTAL','ABONADO','PENDIENTE']];
+    var t=[0,0,0,0];
+    Object.keys(D).sort().forEach(function(k){
+      var x=D[k]; t[0]+=x.n; t[1]+=x.tot; t[2]+=x.ab; t[3]+=x.pen;
+      out.push([k,x.n,_r2(x.tot),_r2(x.ab),_r2(x.pen)]);
+    });
+    out.push(['Total general',t[0],_r2(t[1]),_r2(t[2]),_r2(t[3])]);
+    return out;
   }
-  hoja('Resumen',res,[52,26]);
-  hoja('Por vendedor',pv,[12,8,11,10,9,12,12,10,13,11,11,9,11,15,19,15,15,12,34]);
-  hoja('Comision por venta',cab,[12,12,13,11,30,12,13,19,16,13,12,14,12,11,10,12,18,18,14,11,10,11,15,19,34,30]);
-  hoja('Por mes',pm,[13,8,13,12,13,11,11,9,12,19]);
-  hoja('Por cliente',pc,[32,9,12,12,10,13,11,9,11,15,13,20]);
-  hoja('Por producto',pp,[11,36,13,17,13,11,11,9,19]);
-  hoja('Cartera pendiente',cart,[12,12,19,13,17,11,30,11,11,11,20,22]);
-  hoja('Alertas',al.concat(alertas),[12,12,11,30,12,12,10,11,32]);
+  var cob=[['RESUMEN DE COBRANZAS','','','','']];
+  cob.push(['Solo ventas que aun deben (sin fecha de pago real)','','','','']);
+  cob.push(['','','','','']);
+  cob=cob.concat(blqDeuda('DEUDA VENCIDA (fecha estimada ya paso)',DV));
+  cob.push(['','','','','']);
+  cob=cob.concat(blqDeuda('DEUDA CORRIENTE (aun no vence)',DC));
 
+  // ── Resumen de ventas por año y mes ──
+  var AM={};
+  ventas.filter(function(v){ return v.estado!=='ANULADO'; }).forEach(function(v){
+    var f=v.fecha||''; if(!fOk(f)) return;
+    var a=f.substring(0,4), mm=parseInt(f.substring(5,7),10);
+    if(!AM[a]) AM[a]={tot:0,n:0,m:{}};
+    AM[a].tot+=parseFloat(v.total||0); AM[a].n++;
+    if(!AM[a].m[mm]) AM[a].m[mm]={tot:0,n:0};
+    AM[a].m[mm].tot+=parseFloat(v.total||0); AM[a].m[mm].n++;
+  });
+  var MESNOM=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','setiembre','octubre','noviembre','diciembre'];
+  var rv=[['PERIODO','VENTAS','FACTURADO']];
+  var gt=[0,0];
+  Object.keys(AM).sort().forEach(function(a){
+    rv.push([a,AM[a].n,_r2(AM[a].tot)]); gt[0]+=AM[a].n; gt[1]+=AM[a].tot;
+    Object.keys(AM[a].m).map(Number).sort(function(x,y){return x-y;}).forEach(function(mm){
+      rv.push(['   '+MESNOM[mm-1],AM[a].m[mm].n,_r2(AM[a].m[mm].tot)]);
+    });
+  });
+  rv.push(['Total general',gt[0],_r2(gt[1])]);
+
+  // ── Escribir el libro con colores ──
+  var iReg=cab[0].indexOf('REGLA_APLICADA');
+  var iEst=cab[0].indexOf('ESTADO_PAGO');
+  function colorVenta(fila){
+    if(fila[iReg]==='MC_NEGATIVO') return 'MC_NEGATIVO';
+    if(fila[iReg]==='MC_BAJO')     return 'MC_BAJO';
+    if(fila[iReg]==='SIN_DETALLE') return 'SIN_DETALLE';
+    if(fila[iEst]==='PARCIAL')     return 'PARCIAL';
+    return null;
+  }
+  var jReg=det[0].indexOf('REGLA');
+  var jEst=det[0].indexOf('ESTADO_PAGO');
+  var jCu=det[0].indexOf('COSTO_UNIT');
+  var jCn=det[0].indexOf('COBRADO_NETO_LINEA');
+  function colorLinea(fila){
+    if(fila[jReg]==='MC_NEGATIVO') return 'MC_NEGATIVO';
+    if(fila[jReg]==='MC_BAJO')     return 'MC_BAJO';
+    // Costo 0 con precio cobrado: el margen se lee 100% y no es real
+    if(!(fila[jCu]>0)&&fila[jCn]>0)  return 'SIN_COSTO';
+    if(fila[jEst]==='PARCIAL')     return 'PARCIAL';
+    return null;
+  }
+  var hojas=[
+    {nombre:'Resumen',            aoa:res,  anchos:[52,30]},
+    {nombre:'Resumen cobranzas',  aoa:cob,  anchos:[42,10,14,14,14]},
+    {nombre:'Resumen ventas',     aoa:rv,   anchos:[20,10,16]},
+    {nombre:'Por vendedor',       aoa:pv,   anchos:[12,8,11,10,9,12,12,10,13,11,11,9,11,15,19,15,15,12,34]},
+    {nombre:'Comision por venta', aoa:cab,  anchos:[12,12,13,11,30,12,13,19,16,13,12,14,12,11,10,12,18,18,14,11,10,11,15,19,15,34,34],
+     color:colorVenta},
+    {nombre:'Detalle comisiones', aoa:det,
+     anchos:[12,12,13,30,12,11,13,13,9,10,36,14,10,12,17,13,18,13,15,18,11,13,18,11,9,17,13,15,24,20,21,20,25,34,40],
+     color:colorLinea},
+    {nombre:'Por mes',            aoa:pm,   anchos:[13,8,13,12,13,11,11,9,12,19]},
+    {nombre:'Por cliente',        aoa:pc,   anchos:[32,9,12,12,10,13,11,9,11,15,13,20]},
+    {nombre:'Por producto',       aoa:pp,   anchos:[11,36,13,17,13,11,11,9,19]},
+    {nombre:'Cartera pendiente',  aoa:cart, anchos:[12,12,19,13,17,11,30,11,11,11,20,22]},
+    {nombre:'Revisar',            aoa:al.concat(alertas), anchos:[12,12,11,30,12,12,13,11,9,11,15,36],
+     color:function(f){ return COL_ALERTA[f[10]]?f[10]:null; }}
+  ];
   var nombre='Comisiones_'+(comFiltroMes==='todos'?'historico':comFiltroMes)+'_'+hoyStr+'.xlsx';
-  XLSX.writeFile(wb,nombre);
-  toast('✓ '+T.n+' ventas · comision S/ '+T.com.toFixed(2)+' ('+T.parciales+' con pago parcial)','ok');
+  _escribirLibroExcel(hojas,nombre).then(function(){
+    toast('✓ '+T.n+' ventas · comision S/ '+T.com.toFixed(2)+' · '+((RG.MC_BAJO||0)+(RG.MC_NEGATIVO||0))+' para revisar','ok');
+  }).catch(function(e){ toast('Error al escribir: '+e.message,'err'); });
 }
 
 // ── EXPORTAR COMISIONES PDF ───────────────────────────────
