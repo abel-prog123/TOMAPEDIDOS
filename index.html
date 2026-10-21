@@ -2525,8 +2525,10 @@ async function saveEdit(){
       observaciones:document.getElementById('e-obs').value,
       descuento:ab
     };
+    // La fecha de pago total se guarda TAL CUAL quedo en el formulario,
+    // incluso vacia: borrarla es una accion valida y debe llegar a la base.
     const fpt=document.getElementById('e-fpt').value;
-    if(fpt) upd.fecha_pago_real=fpt;
+    upd.fecha_pago_real=fpt||null;
     upd.fecha_estimada_pago=document.getElementById('e-festimada').value||null;
     const fent=document.getElementById('e-fentrega').value;
     if(fent) upd.fecha_entrega=fent;
@@ -2545,11 +2547,14 @@ async function saveEdit(){
     const despAnterior=ventaPrev.estado_despacho||'';
     const estadoElegido=document.getElementById('e-est').value;
     const cambioManual=estadoElegido!==(ventaPrev.estado||'');
+    const eraCompletado=(ventaPrev.estado||'')==='COMPLETADO';
     if(!cambioManual&&ab>=editTotal&&editTotal>0&&estadoElegido!=='ANULADO'){
       upd.estado='COMPLETADO';
-      if(!fpt)upd.fecha_pago_real=hoy();
     }
-    if(upd.estado==='COMPLETADO'&&!upd.fecha_pago_real&&!fpt) upd.fecha_pago_real=hoy();
+    // La fecha se estampa SOLO cuando la venta recien pasa a COMPLETADO
+    // y el usuario no puso ninguna. Si ya estaba completada, la fecha es
+    // dato del area: no se rellena ni se pisa, aunque la hayan borrado.
+    if(upd.estado==='COMPLETADO'&&!fpt&&!eraCompletado) upd.fecha_pago_real=hoy();
 
     // ── Cambio de vendedor: recalcula comisiones y regenera la nota ──
     const _vSel=document.getElementById('e-vend');
@@ -4295,21 +4300,34 @@ function estaPagada(v){
   return _pagadoDe(v.id) >= tot - TOL_PAGO;
 }
 // FECHA DE PAGO REAL = el día en que la venta terminó de pagarse.
-// No es la fecha de cada abono: es la del abono con el que el
-// acumulado alcanzó el total. Si la venta sigue debiendo, va vacía.
-// Una fecha cargada a mano en la venta manda sobre el cálculo.
+//
+// REGLA: si el area cargo la fecha a mano en la venta, ESA manda y no
+// se recalcula nunca. Es una decision administrativa (por ejemplo dar
+// por cerrada una venta a la que le falta un vuelto), no un dato que
+// el sistema deba corregir.
+//
+// Solo cuando el campo esta vacio se deduce de los abonos: la fecha
+// del abono con el que el acumulado alcanzo el total. Si todavia debe,
+// va vacia.
 function fechaPagoReal(v){
   if(!v) return '';
+  if(v.fecha_pago_real) return v.fecha_pago_real;   // lo cargado a mano manda
   var tot=parseFloat(v.total||0);
-  if(!(tot>0)) return v.fecha_pago_real||'';
+  if(!(tot>0)) return '';
   var acum=0, abs=_abonosDe(v.id);
   for(var i=0;i<abs.length;i++){
     acum+=parseFloat(abs[i].monto||0);
-    if(acum >= tot - TOL_PAGO) return abs[i].fecha||v.fecha_pago_real||'';
+    if(acum >= tot - TOL_PAGO) return abs[i].fecha||'';
   }
-  // Sin abonos registrados pero con fecha puesta a mano: se respeta
-  if(!abs.length && v.fecha_pago_real) return v.fecha_pago_real;
   return '';
+}
+// Venta cerrada a mano: tiene fecha de pago cargada pero los abonos
+// no llegan a cubrir el total. Sirve para marcarla en los reportes.
+function cierreManual(v){
+  if(!v||!v.fecha_pago_real) return false;
+  var tot=parseFloat(v.total||0);
+  if(!(tot>0)) return false;
+  return _pagadoDe(v.id) < tot - TOL_PAGO;
 }
 // ¿Este abono fue el que completó la venta?
 function _abonoQueCompleta(v,abonoId){
@@ -4734,7 +4752,8 @@ function _armarExcelComisiones(allDets){
   var V={},C={},P={},M={},RG={},RGc={};
   var T={fact:0,pag:0,neto:0,costo:0,com:0,n:0,completas:0,parciales:0,dc:[],df:[],at:0,ce:0};
   var TL={n:0,bajo:0,neg:0,sinPrecio:0,sinCosto:0,com:0,ajust:0,
-          sinCostoCom:0,sinCostoNeto:0,sinDetalle:0,sinDetalleCom:0};
+          sinCostoCom:0,sinCostoNeto:0,sinDetalle:0,sinDetalleCom:0,
+          cierreMan:0,cierreManSaldo:0};
   var alertas=[];
 
   vs.forEach(function(v){
@@ -4757,6 +4776,12 @@ function _armarExcelComisiones(allDets){
     }
     else if(sinCosto) alerta=(alerta?alerta+' · ':'')+'Algun producto sin costo cargado';
     if(!completa) alerta=(alerta?alerta+' · ':'')+'Pago parcial ('+Math.round(r.proporcion*100)+'%)';
+    // Fecha de cierre cargada a mano pero con saldo pendiente: la
+    // comision se calcula sobre lo cobrado, no sobre el total.
+    if(cierreManual(v)){
+      TL.cierreMan++; TL.cierreManSaldo+=saldo;
+      alerta=(alerta?alerta+' · ':'')+'CIERRE MANUAL — fecha cargada a mano, faltan S/ '+saldo.toFixed(2)+' por cobrar';
+    }
 
     cab.push([v.id,v.fecha||'',mesComision(v),vend,nom,v.estado||'',getPS(r.facturado,r.pagado).toUpperCase(),
       v.fecha_estimada_pago||'',fr,desf,dCob,
@@ -4909,6 +4934,12 @@ function _armarExcelComisiones(allDets){
     ['Ventas sin productos registrados (gris)',TL.sinDetalle],
     ['  no generan comision','Antes pagaban 51.2% del neto porque el costo salia 0'],
     ['  comision que habrian pagado S/',_r2(TL.sinDetalleCom)],
+    ['',''],
+    ['Ventas con CIERRE MANUAL',TL.cierreMan],
+    ['  saldo que todavia figura pendiente S/',_r2(TL.cierreManSaldo)],
+    ['  que significa','Tienen fecha de pago cargada a mano pero los abonos no cubren el total'],
+    ['  como se calcula la comision','Sobre lo COBRADO (los abonos), no sobre el total facturado'],
+    ['  si la venta ya se cerro de verdad','Registrar el abono que falta, o bajar el total si hubo descuento'],
     ['',''],
     ['ALERTAS',''],
     ['Ventas con algo que revisar',alertas.length]
@@ -9799,9 +9830,15 @@ async function ejecutarExportExcel(){
             var acumAqui=0;
             for(var z=0;z<hermanos.length&&z<idx;z++) acumAqui+=parseFloat(hermanos[z].monto||0);
             var completa=v?_abonoQueCompleta(v,a.id):false;
-            var tipo=completa?(hermanos.length>1?'CANCELA (último)':'PAGO TOTAL'):'PARCIAL (a cuenta)';
+            // Venta cerrada a mano: ningún abono llega al total, pero el
+            // área cargó la fecha. Se muestra en el último abono para que
+            // la fecha no se pierda del reporte.
+            var cierreMan=v?cierreManual(v):false;
+            var ultimoAb=cierreMan&&idx===hermanos.length;
+            var tipo=completa?(hermanos.length>1?'CANCELA (último)':'PAGO TOTAL')
+                    :(ultimoAb?'CIERRE MANUAL':'PARCIAL (a cuenta)');
             pr.push([a.fecha||'',_r4(monto),tipo,
-              completa?fechaPagoReal(v):'',
+              (completa||ultimoAb)?fechaPagoReal(v):'',
               a.venta_id,v?(v.fecha||''):'',
               c?(c.nombres||c.alias||''):'',c?(c.dni_ruc||''):'',v?(v.vendedor||''):'',
               v?(v.forma_pago||''):'',v?(v.comprobante||''):'',_r4(tot),
