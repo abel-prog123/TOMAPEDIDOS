@@ -2252,6 +2252,27 @@ function buildPDF(nomC,rucC,pago,comp,vend,obs,fecha,numDoc,snap){
 // ── VENTAS ────────────────────────────────────────────────
 function getAb(vid){return abonos.filter(a=>a.venta_id===vid).reduce((s,a)=>s+parseFloat(a.monto||0),0);}
 function getPS(tot,ab){if(ab<=0)return'pendiente';if(ab>=tot-0.50)return'pagado';return'parcial';}
+// Estado de pago de una VENTA. Si el area cargo la fecha de pago total
+// (la de comisiones), la venta se da por concluida aunque los abonos no
+// cubran el total: esa fecha es la decision administrativa de cierre.
+// Lo que falto abonar se informa aparte, no se esconde.
+function estadoPago(v){
+  if(!v) return 'pendiente';
+  if(v.fecha_pago_real) return 'pagado';
+  return getPS(parseFloat(v.total||0), _pagadoDe(v.id));
+}
+// Cuanto quedo sin abonar en una venta cerrada a mano (0 si no aplica)
+function saldoNoAbonado(v){
+  if(!v||!v.fecha_pago_real) return 0;
+  var tot=parseFloat(v.total||0); if(!(tot>0)) return 0;
+  var d=tot-_pagadoDe(v.id);
+  return d>TOL_PAGO?d:0;
+}
+// Texto para la columna de observacion de cobranza
+function obsCobranza(v){
+  var d=saldoNoAbonado(v);
+  return d>0?('Faltó abonar S/ '+d.toFixed(2)+' — venta concluida'):'';
+}
 
 function renderV(list){
   const el=document.getElementById('VL');
@@ -2284,7 +2305,7 @@ function renderV(list){
           const est=v.estado||'PENDIENTE';
           const tot=parseFloat(v.total||0);
           const ab=getAb(v.id);
-          const ps=getPS(tot,ab);
+          const ps=estadoPago(v);
           const psl=ps==='pagado'?'PAGADO':ps==='parcial'?`S/${ab.toFixed(0)}/${tot.toFixed(0)}`:'SIN PAGO';
           html+=`<div class="vrow" onclick="abrirE('${v.id}')">
             <div class="vinfo">
@@ -2408,7 +2429,11 @@ function dspBadge(v){
 function uPS(){
   const ab=eAbonos.filter(a=>!a._del).reduce((s,a)=>s+parseFloat(a.monto||0),0);
   const pct=editTotal>0?Math.min(100,(ab/editTotal)*100):0;
-  const ps=getPS(editTotal,ab);
+  // Si hay fecha de pago total en el formulario, la venta esta cerrada,
+  // aunque los abonos no lleguen. Se lee del campo y no de la base, para
+  // que la barra reaccione mientras se edita.
+  const _fpt=(document.getElementById('e-fpt')||{}).value||'';
+  const ps=_fpt?'pagado':getPS(editTotal,ab);
   document.getElementById('PFill').style.width=pct+'%';
   document.getElementById('PFill').className='pfill '+ps;
   document.getElementById('PBadge').className='pbadge '+ps;
@@ -3976,7 +4001,7 @@ async function exportAnalisisDespachos(){
           var tot=parseFloat(v.total||0), ab=getAb(v.id);
           var fila=[v.id,v.fecha||'',(v.fecha||'').substring(0,7),nom,v.vendedor||'',
                     v.estado_despacho||'PENDIENTE',fest,freal,dev,cumpl,lead,nd,_r4(tot),
-                    getPS(tot,ab).toUpperCase(),
+                    estadoPago(v).toUpperCase(),
                     esReal?'Real':'Migrado — fecha rellenada'];
           filas.push(fila);
           if(esReal&&fest&&freal) reales.push({dev:dev,vend:v.vendedor||'—',mes:(v.fecha||'').substring(0,7),cli:nom,tot:tot});
@@ -4099,7 +4124,7 @@ async function exportDespachosExcel(){
             } else { estEnt='⚪ SIN FECHA'; }
             if((v.estado_despacho||'')==='PARCIAL') estEnt='🟠 PARCIAL';
             out.push([estEnt,dias,fest,freal,nom,(c&&c.direccion)||'',prodTxt,v.vendedor||'',(v.estado_despacho||'PENDIENTE'),
-              v.forma_pago||'',_r4(tot),_r4(ab),_r4(pend),getPS(tot,ab).toUpperCase(),v.fecha||'',v.id]);
+              v.forma_pago||'',_r4(tot),_r4(ab),_r4(pend),estadoPago(v).toUpperCase(),v.fecha||'',v.id]);
           });
           return out;
         }
@@ -4735,7 +4760,8 @@ function _armarExcelComisiones(allDets){
             'TOTAL_FACTURADO','PAGADO_REAL','SALDO','% COBRADO',
             'Nº_PRODUCTOS','COSTO_TOTAL_PEDIDO','COSTO_PROPORCIONAL',
             'COBRADO_NETO','MC_SOLES','MC_%','COMISION','COMISION_%_COBRADO',
-            'UTILIDAD_TRAS_COMISION','REGLA_APLICADA','FORMULA','ALERTA']];
+            'UTILIDAD_TRAS_COMISION','REGLA_APLICADA','FORMULA',
+            'OBSERVACION_COBRANZA','ALERTA']];
   // ── Una fila por PRODUCTO VENDIDO, agrupado por venta ──
   // Mismo formato que el detalle que ya usaba administracion, mas las
   // columnas del calculo de comision linea por linea.
@@ -4747,13 +4773,13 @@ function _armarExcelComisiones(allDets){
             'MC_SOLES','MC_%','FORMULA_SIN_PISO','REGLA','COMISION_LINEA',
             'COMISION_LINEA_AJUSTADA','COMISION_%_SOBRE_LINEA',
             'COMISION_VENTA_A_PAGAR','SUMA_COMISION_LINEAS','DIFERENCIA_LINEAS_VS_VENTA',
-            'FORMULA','ALERTA']];
+            'FORMULA','OBSERVACION_COBRANZA','ALERTA']];
 
   var V={},C={},P={},M={},RG={},RGc={};
   var T={fact:0,pag:0,neto:0,costo:0,com:0,n:0,completas:0,parciales:0,dc:[],df:[],at:0,ce:0};
   var TL={n:0,bajo:0,neg:0,sinPrecio:0,sinCosto:0,com:0,ajust:0,
           sinCostoCom:0,sinCostoNeto:0,sinDetalle:0,sinDetalleCom:0,
-          cierreMan:0,cierreManSaldo:0};
+          cierreMan:0,cierreManSaldo:0,cierreManExtra:0};
   var alertas=[];
 
   vs.forEach(function(v){
@@ -4764,7 +4790,7 @@ function _armarExcelComisiones(allDets){
     var vend=v.vendedor||'—';
     var fr=fechaPagoReal(v);
     var saldo=r.facturado-r.pagado;
-    var completa=estaPagada(v);
+    var completa=estaPagada(v)||!!v.fecha_pago_real;
     var desf=dias(v.fecha_estimada_pago,fr);
     var dCob=dias(v.fecha,fr);
     var sinCosto=dets.some(function(d){ return !(_costoLinea(d)>0); });
@@ -4775,20 +4801,23 @@ function _armarExcelComisiones(allDets){
       TL.sinDetalleCom+=r.pagadoNeto*0.512;
     }
     else if(sinCosto) alerta=(alerta?alerta+' · ':'')+'Algun producto sin costo cargado';
-    if(!completa) alerta=(alerta?alerta+' · ':'')+'Pago parcial ('+Math.round(r.proporcion*100)+'%)';
-    // Fecha de cierre cargada a mano pero con saldo pendiente: la
-    // comision se calcula sobre lo cobrado, no sobre el total.
-    if(cierreManual(v)){
-      TL.cierreMan++; TL.cierreManSaldo+=saldo;
-      alerta=(alerta?alerta+' · ':'')+'CIERRE MANUAL — fecha cargada a mano, faltan S/ '+saldo.toFixed(2)+' por cobrar';
+    // Venta cerrada a mano: figura PAGADO porque el area la dio por
+    // concluida. Lo que falto abonar va en su propia columna, y la
+    // comision se sigue calculando sobre lo que realmente entro.
+    var faltoAbonar=saldoNoAbonado(v);
+    if(faltoAbonar>0){
+      TL.cierreMan++; TL.cierreManSaldo+=faltoAbonar;
+      TL.cierreManExtra+=(r.proporcion>0?(r.comision/r.proporcion-r.comision):0);
+    } else if(!completa){
+      alerta=(alerta?alerta+' · ':'')+'Pago parcial ('+Math.round(r.proporcion*100)+'%)';
     }
 
-    cab.push([v.id,v.fecha||'',mesComision(v),vend,nom,v.estado||'',getPS(r.facturado,r.pagado).toUpperCase(),
+    cab.push([v.id,v.fecha||'',mesComision(v),vend,nom,v.estado||'',estadoPago(v).toUpperCase(),
       v.fecha_estimada_pago||'',fr,desf,dCob,
       _r2(r.facturado),_r2(r.pagado),_r2(saldo),pct(r.pagado,r.facturado),
       dets.length,_r2(r.costoTotal),_r2(r.costoProp),
       _r2(r.pagadoNeto),_r2(r.margenS),_r2(r.margenPct),_r2(r.comision),pct(r.comision,r.pagadoNeto),
-      _r2(r.margenS-r.comision),r.regla,r.formula,alerta]);
+      _r2(r.margenS-r.comision),r.regla,r.formula,obsCobranza(v),alerta]);
 
     if(r.regla!=='NORMAL'||sinCosto||!dets.length)
       alertas.push([v.fecha||'',v.id,vend,nom,_r2(r.facturado),_r2(r.pagado),
@@ -4840,10 +4869,11 @@ function _armarExcelComisiones(allDets){
       var ajust=sumaPropia>0?(L.comision*factor)
                             :(sumaNeta>0?(r.comision*(L.cobradoNeto/sumaNeta)):0);
       var alertaL=L.alerta;
-      if(!completa) alertaL=(alertaL?alertaL+' · ':'')+'Pago parcial ('+Math.round(r.proporcion*100)+'%)';
+      if(!completa&&!(faltoAbonar>0))
+        alertaL=(alertaL?alertaL+' · ':'')+'Pago parcial ('+Math.round(r.proporcion*100)+'%)';
 
       det.push([v.id,v.fecha||'',mesComision(v),nom,(cl&&cl.ruc)||'',vend,
-        v.comprobante||'',getPS(r.facturado,r.pagado).toUpperCase(),
+        v.comprobante||'',estadoPago(v).toUpperCase(),
         ix+1,_codProd(pr),nomP,pr.categoria||'',L.qty,
         _r2(L.pvUnit),_r2(L.pvUnitNeto),_r2(L.totLinea),_r2(L.totNeto),
         pct(L.totLinea,r.facturado),pct(r.pagado,r.facturado),_r2(L.cobradoNeto),
@@ -4851,7 +4881,7 @@ function _armarExcelComisiones(allDets){
         _r2(L.margenS),_r2(L.margenPct),_r2(L.formulaCruda),L.regla,_r2(L.comision),
         _r2(ajust),pct(L.comision,L.cobradoNeto),
         _r2(r.comision),_r2(sumaPropia),_r2(sumaPropia-r.comision),
-        L.formula,alertaL]);
+        L.formula,obsCobranza(v),alertaL]);
 
       TL.n++; TL.com+=L.comision; TL.ajust+=ajust;
       if(L.regla==='MC_BAJO')      TL.bajo++;
@@ -4935,11 +4965,14 @@ function _armarExcelComisiones(allDets){
     ['  no generan comision','Antes pagaban 51.2% del neto porque el costo salia 0'],
     ['  comision que habrian pagado S/',_r2(TL.sinDetalleCom)],
     ['',''],
-    ['Ventas con CIERRE MANUAL',TL.cierreMan],
-    ['  saldo que todavia figura pendiente S/',_r2(TL.cierreManSaldo)],
-    ['  que significa','Tienen fecha de pago cargada a mano pero los abonos no cubren el total'],
-    ['  como se calcula la comision','Sobre lo COBRADO (los abonos), no sobre el total facturado'],
-    ['  si la venta ya se cerro de verdad','Registrar el abono que falta, o bajar el total si hubo descuento'],
+    ['VENTAS CERRADAS A MANO',''],
+    ['Cuantas son',TL.cierreMan],
+    ['  figuran como PAGADO','Porque tienen cargada la fecha de pago total (comisiones)'],
+    ['  lo que falto abonar S/',_r2(TL.cierreManSaldo)],
+    ['  se informa en','La columna OBSERVACION_COBRANZA de cada hoja'],
+    ['  la comision se calcula sobre','Lo COBRADO (los abonos), no sobre el total facturado'],
+    ['  si se pagara sobre el total facturado S/',_r2(TL.cierreManExtra)+' mas'],
+    ['  para que cierre al 100%','Registrar el abono que falta, o bajar el total si hubo descuento'],
     ['',''],
     ['ALERTAS',''],
     ['Ventas con algo que revisar',alertas.length]
@@ -4982,7 +5015,9 @@ function _armarExcelComisiones(allDets){
              'TOTAL','PAGADO','SALDO','COMISION_YA_DEVENGADA','COMISION_SI_SE_COBRA_TODO']];
   var tramos={'Por vencer':0,'1-15 dias':0,'16-30 dias':0,'31-60 dias':0,'Mas de 60':0,'Sin fecha estimada':0};
   var saldoTot=0, comPend=0;
-  ventas.filter(function(v){ return v.estado!=='ANULADO'&&!estaPagada(v); }).forEach(function(v){
+  // Las cerradas a mano no son cartera: el area ya las dio por
+  // concluidas. Lo que falto abonar se informa en el Resumen.
+  ventas.filter(function(v){ return v.estado!=='ANULADO'&&!estaPagada(v)&&!v.fecha_pago_real; }).forEach(function(v){
     var tot=parseFloat(v.total||0), pag=_pagadoDe(v.id), sal=tot-pag;
     if(sal<=0.01) return;
     var dets=detPorVenta[v.id]||[];
@@ -5020,7 +5055,9 @@ function _armarExcelComisiones(allDets){
 
   // ── Resumen de cobranzas (como la dinamica de deuda) ──
   var DV={},DC={};
-  ventas.filter(function(v){ return v.estado!=='ANULADO'&&!estaPagada(v); }).forEach(function(v){
+  // Las cerradas a mano no son cartera: el area ya las dio por
+  // concluidas. Lo que falto abonar se informa en el Resumen.
+  ventas.filter(function(v){ return v.estado!=='ANULADO'&&!estaPagada(v)&&!v.fecha_pago_real; }).forEach(function(v){
     var tot=parseFloat(v.total||0), pag=_pagadoDe(v.id), sal=tot-pag;
     if(sal<=0.01) return;
     var vend=v.vendedor||'(sin vendedor)';
@@ -5094,10 +5131,10 @@ function _armarExcelComisiones(allDets){
     {nombre:'Resumen cobranzas',  aoa:cob,  anchos:[42,10,14,14,14]},
     {nombre:'Resumen ventas',     aoa:rv,   anchos:[20,10,16]},
     {nombre:'Por vendedor',       aoa:pv,   anchos:[12,8,11,10,9,12,12,10,13,11,11,9,11,15,19,15,15,12,34]},
-    {nombre:'Comision por venta', aoa:cab,  anchos:[12,12,13,11,30,12,13,19,16,13,12,14,12,11,10,12,18,18,14,11,10,11,15,19,15,34,34],
+    {nombre:'Comision por venta', aoa:cab,  anchos:[12,12,13,11,30,12,13,19,16,13,12,14,12,11,10,12,18,18,14,11,10,11,15,19,15,34,38,34],
      color:colorVenta},
     {nombre:'Detalle comisiones', aoa:det,
-     anchos:[12,12,13,30,12,11,13,13,9,10,36,14,10,12,17,13,18,13,15,18,11,13,18,11,9,17,13,15,24,20,21,20,25,34,40],
+     anchos:[12,12,13,30,12,11,13,13,9,10,36,14,10,12,17,13,18,13,15,18,11,13,18,11,9,17,13,15,24,20,21,20,25,34,38,40],
      color:colorLinea},
     {nombre:'Por mes',            aoa:pm,   anchos:[13,8,13,12,13,11,11,9,12,19]},
     {nombre:'Por cliente',        aoa:pc,   anchos:[32,9,12,12,10,13,11,9,11,15,13,20]},
@@ -9793,18 +9830,18 @@ async function ejecutarExportExcel(){
           // el día en que la venta terminó de pagarse, no la de cada abono.
           var vr=[['ID','FECHA','CLIENTE','RUC','VENDEDOR','FORMA_PAGO','COMPROBANTE','ESTADO',
                    'TOTAL','ABONADO','PENDIENTE','ESTADO_PAGO','FECHA_ESTIMADA_PAGO',
-                   'FECHA_ENTREGA','FECHA_PAGO_REAL','OBSERVACIONES']];
+                   'FECHA_ENTREGA','FECHA_PAGO_REAL','OBSERVACION_COBRANZA','OBSERVACIONES']];
           ventasFilt.forEach(function(v){
             var c=clis.find(function(x){return x.id===v.cliente_id;});
             var pg=_pagadoDe(v.id);
             var tot=parseFloat(v.total||0);
             vr.push([v.id,v.fecha||'',c?(c.nombres||c.alias||''):'',c?(c.dni_ruc||''):'',
               v.vendedor||'',v.forma_pago||'',v.comprobante||'',v.estado||'',
-              _r4(tot),_r4(pg),_r4(tot-pg),getPS(tot,pg).toUpperCase(),
+              _r4(tot),_r4(pg),_r4(tot-pg),estadoPago(v).toUpperCase(),
               v.fecha_estimada_pago||'',v.fecha_entrega||'',
-              fechaPagoReal(v),(v.observaciones||'')]);
+              fechaPagoReal(v),obsCobranza(v),(v.observaciones||'')]);
           });
-          hoja('Ventas',vr,[12,12,32,13,11,13,13,12,12,12,12,13,19,13,16,40]);
+          hoja('Ventas',vr,[12,12,32,13,11,13,13,12,12,12,12,13,19,13,16,38,40]);
         }
 
         // ── Pagos: el dinero realmente recibido, por fecha de cobro ──
