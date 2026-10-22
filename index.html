@@ -4318,7 +4318,7 @@ var TOL_PAGO=0.50;
 // Se muestra en la pantalla de ingreso y en Inicio. Sirve para
 // saber de un vistazo si el navegador esta usando la ultima
 // subida o una copia vieja guardada en cache.
-var APP_VER='2026-10-21';
+var APP_VER='2026-10-22';
 function pintarVersion(){
   ['appVer','appVerInicio'].forEach(function(id){
     var el=document.getElementById(id);
@@ -8394,7 +8394,8 @@ function renderInicio(){
   document.getElementById('inicio-saludo').innerHTML=
     '<div style="font-size:1.3rem;font-weight:900;color:#1e293b;letter-spacing:-.3px;">'+saludo+(sesion.vendedor?', '+sesion.vendedor:'')+'</div>'
     +'<div style="font-size:.76rem;color:#64748b;margin-top:3px;">'+_fechaLarga()
-    +' <span id="appVerInicio" style="color:#cbd5e1;font-size:.68rem;margin-left:6px;"></span></div>';
+    +' <span id="appVerInicio" onclick="forzarActualizacion()" title="Tocar para forzar la actualización"'
+    +' style="color:#cbd5e1;font-size:.68rem;margin-left:6px;cursor:pointer;"></span></div>';
   pintarVersion();
 
   cont.innerHTML=AREAS.filter(function(a){ return !a.rol||esGerente; }).map(function(a){
@@ -9130,6 +9131,7 @@ document.addEventListener('DOMContentLoaded',function(){
   if(eq) eq.oninput=uEdetTotal;
   llenarSelectsVendedores();
   pintarVersion();
+  setTimeout(revisarVersion,3000);
 });
 
 async function saveDetalle(){
@@ -9310,12 +9312,71 @@ renderDash=async function(){
 // ═══════════════════════════════════════════════════════════
 if('serviceWorker' in navigator){
   window.addEventListener('load',function(){
-    navigator.serviceWorker.register('sw.js').then(function(reg){
-      console.log('SW registrado');
+    // updateViaCache:'none' obliga al navegador a pedir sw.js al servidor
+    // en vez de servirlo de su propio cache.
+    navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(function(reg){
+      reg.update();
+      // Revisar si hay version nueva cada hora de uso continuo
+      setInterval(function(){ try{ reg.update(); }catch(e){} }, 3600000);
     }).catch(function(e){
       console.log('SW error:',e);
     });
   });
+}
+
+// ═══════════════════════════════════════════════════════════
+// AVISO DE VERSION NUEVA
+//
+// El service worker guarda la app en cache. Sin esto, alguien puede
+// seguir usando una version vieja por dias sin enterarse, y reportar
+// errores que ya estan corregidos.
+//
+// Cada vez que arranca, la app le pregunta al servidor que version
+// hay publicada. Si no coincide con la que esta corriendo, avisa.
+// ═══════════════════════════════════════════════════════════
+async function revisarVersion(){
+  try{
+    var r=await fetch('index.html?v='+Date.now(),{cache:'no-store'});
+    if(!r.ok) return;
+    var txt=await r.text();
+    var m=txt.match(/var\s+APP_VER\s*=\s*'([^']+)'/);
+    if(m && m[1] && m[1]!==APP_VER) mostrarAvisoVersion(m[1]);
+  }catch(e){ /* sin internet: no molestar */ }
+}
+
+function mostrarAvisoVersion(nueva){
+  if(document.getElementById('avisoVer')) return;
+  var d=document.createElement('div');
+  d.id='avisoVer';
+  d.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:9999;'
+    +'background:#17254f;color:#fff;padding:12px 16px;display:flex;'
+    +'align-items:center;gap:12px;font-size:.82rem;box-shadow:0 -4px 16px rgba(0,0,0,.25);';
+  d.innerHTML='<span style="flex:1;line-height:1.35;">'
+    +'<b>Hay una versión nueva disponible</b><br>'
+    +'<span style="opacity:.75;font-size:.75rem;">Estás usando la v'+APP_VER+' · publicada la v'+nueva+'</span></span>'
+    +'<button onclick="forzarActualizacion()" style="background:#fff;color:#17254f;border:none;'
+    +'border-radius:8px;padding:9px 14px;font-family:inherit;font-weight:800;font-size:.8rem;cursor:pointer;">Actualizar</button>'
+    +'<button onclick="this.parentNode.remove()" style="background:transparent;color:rgba(255,255,255,.6);'
+    +'border:none;font-size:1.2rem;cursor:pointer;padding:0 4px;">&times;</button>';
+  document.body.appendChild(d);
+}
+
+// Borra el service worker y todos los caches, y recarga. Es el unico
+// metodo que funciona siempre, sin depender de como este hecho sw.js.
+async function forzarActualizacion(){
+  var b=document.querySelector('#avisoVer button');
+  if(b){ b.textContent='Actualizando...'; b.disabled=true; }
+  try{
+    if('serviceWorker' in navigator){
+      var regs=await navigator.serviceWorker.getRegistrations();
+      for(var i=0;i<regs.length;i++) await regs[i].unregister();
+    }
+    if(window.caches){
+      var ks=await caches.keys();
+      for(var j=0;j<ks.length;j++) await caches.delete(ks[j]);
+    }
+  }catch(e){ console.log('Limpieza:',e); }
+  location.replace(location.pathname+'?rv='+Date.now());
 }
 
 // ═══════════════════════════════════════════════════════════
