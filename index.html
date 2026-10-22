@@ -382,7 +382,10 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 <div id="LOGIN" style="position:fixed;inset:0;background:var(--p);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:10000;padding:24px;">
   <div style="font-size:3rem;margin-bottom:12px;">🚚</div>
   <h1 style="color:#fff;font-size:1.6rem;font-weight:900;margin-bottom:4px;">TomaPedidos</h1>
-  <p style="color:rgba(255,255,255,.8);font-size:.88rem;margin-bottom:24px;">Frostech</p>
+  <p style="color:rgba(255,255,255,.8);font-size:.88rem;margin-bottom:8px;">Frostech</p>
+  <!-- Version visible: sirve para saber si el navegador esta usando la
+       ultima subida o una copia vieja en cache. -->
+  <p id="appVer" style="color:rgba(255,255,255,.45);font-size:.7rem;margin-bottom:20px;letter-spacing:.04em;"></p>
 
   <!-- Paso 1: Seleccionar usuario -->
   <div id="login-paso1" style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,.2);">
@@ -4310,6 +4313,18 @@ async function exportExcel(){
 // o menos se considera PAGADA. Sin esto, un céntimo de
 // diferencia dejaba la venta como parcial y sin fecha de pago.
 var TOL_PAGO=0.50;
+
+// ── Version de la app ───────────────────────────────────────
+// Se muestra en la pantalla de ingreso y en Inicio. Sirve para
+// saber de un vistazo si el navegador esta usando la ultima
+// subida o una copia vieja guardada en cache.
+var APP_VER='2026-10-21';
+function pintarVersion(){
+  ['appVer','appVerInicio'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.textContent='v'+APP_VER;
+  });
+}
 
 function _abonosDe(vid){
   return (abonos||[]).filter(function(a){return a.venta_id===vid;})
@@ -8378,7 +8393,9 @@ function renderInicio(){
   var saludo=hora<12?'Buenos días':(hora<19?'Buenas tardes':'Buenas noches');
   document.getElementById('inicio-saludo').innerHTML=
     '<div style="font-size:1.3rem;font-weight:900;color:#1e293b;letter-spacing:-.3px;">'+saludo+(sesion.vendedor?', '+sesion.vendedor:'')+'</div>'
-    +'<div style="font-size:.76rem;color:#64748b;margin-top:3px;">'+_fechaLarga()+'</div>';
+    +'<div style="font-size:.76rem;color:#64748b;margin-top:3px;">'+_fechaLarga()
+    +' <span id="appVerInicio" style="color:#cbd5e1;font-size:.68rem;margin-left:6px;"></span></div>';
+  pintarVersion();
 
   cont.innerHTML=AREAS.filter(function(a){ return !a.rol||esGerente; }).map(function(a){
     return '<div style="margin-bottom:26px;">'
@@ -9112,6 +9129,7 @@ document.addEventListener('DOMContentLoaded',function(){
   if(ep) ep.oninput=uEdetTotal;
   if(eq) eq.oninput=uEdetTotal;
   llenarSelectsVendedores();
+  pintarVersion();
 });
 
 async function saveDetalle(){
