@@ -1462,6 +1462,10 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="fg" id="fg-cot-vend"><label>Vendedor</label>
       <select class="msel" id="cot-vend"></select>
     </div>
+    <div class="fg"><label>Cliente (sale en el PDF)</label>
+      <input type="text" id="cot-cli" placeholder="Nombre de quien pide la cotización" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.88rem;outline:none;box-sizing:border-box;">
+      <div id="cot-cli-nota" style="font-size:.7rem;color:var(--mu);margin-top:4px;"></div>
+    </div>
     <div class="fg"><label>Dirección (sale en el PDF)</label>
       <textarea id="cot-dir" rows="2" placeholder="Déjala vacía para que no aparezca en el PDF" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.85rem;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
       <div style="font-size:.7rem;color:var(--mu);margin-top:4px;">Solo afecta a esta cotización, no cambia la ficha del cliente.</div>
@@ -1484,6 +1488,16 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;">
       <button onclick="cotPDF()" style="flex:1;min-width:120px;padding:11px;background:var(--p);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.82rem;font-weight:800;cursor:pointer;">📄 PDF</button>
       <button onclick="cotWhatsApp()" style="flex:1;min-width:120px;padding:11px;background:#25d366;color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.82rem;font-weight:800;cursor:pointer;">💬 WhatsApp</button>
+    </div>
+    <button onclick="cotAsignarCliente()" id="cot-btn-cli" style="display:none;width:100%;padding:12px;background:#0ea5e9;color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.85rem;font-weight:800;cursor:pointer;margin-top:8px;">👤 Asignar cliente de la base</button>
+    <div id="cot-cli-box" style="display:none;margin-top:8px;padding:12px;border:1.5px solid #0ea5e9;border-radius:12px;background:#f0f9ff;">
+      <div style="font-size:.72rem;font-weight:800;color:#0369a1;margin-bottom:6px;">BUSCAR CLIENTE</div>
+      <input type="text" id="cot-cli-busq" oninput="cotFiltrarClientes()" placeholder="Nombre, alias o RUC" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.85rem;outline:none;box-sizing:border-box;margin-bottom:6px;">
+      <select id="cot-cli-sel" size="6" style="width:100%;padding:6px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.82rem;outline:none;box-sizing:border-box;"></select>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button onclick="cotConfirmarCliente()" style="flex:1;padding:10px;background:#0ea5e9;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.82rem;font-weight:800;cursor:pointer;">Asignar</button>
+        <button onclick="document.getElementById('cot-cli-box').style.display='none'" style="padding:10px 14px;background:#e2e8f0;color:#475569;border:none;border-radius:10px;font-family:inherit;font-size:.82rem;font-weight:800;cursor:pointer;">Cancelar</button>
+      </div>
     </div>
     <button onclick="cotConvertir()" id="cot-btn-conv" style="width:100%;padding:12px;background:#16a34a;color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.85rem;font-weight:800;cursor:pointer;margin-top:8px;">✅ Convertir en pedido</button>
     <button onclick="cotGuardar()" id="cot-btn-save" style="width:100%;padding:13px;background:var(--a);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:.88rem;font-weight:800;cursor:pointer;margin-top:8px;">✓ GUARDAR</button>
@@ -3563,14 +3577,12 @@ function renderCotizaciones(){
     arr=arr.filter(function(c){return (c.vendedor||'')===sesion.vendedor;});
   if(filtro) arr=arr.filter(function(c){return cotEstado(c)===filtro;});
   if(q) arr=arr.filter(function(c){
-    var cl=clis.find(function(x){return x.id===c.cliente_id;});
-    var t=((c.numero||'')+' '+(c.vendedor||'')+' '+(cl?(cl.nombres||cl.alias||''):'')).toLowerCase();
+    var t=((c.numero||'')+' '+(c.vendedor||'')+' '+_cotCliente(c)).toLowerCase();
     return t.indexOf(q)>=0;
   });
   if(!arr.length){ el.innerHTML='<div class="empty"><p>No hay cotizaciones.<br>Créalas desde la pestaña Pedido con el botón 📋 Cotizar.</p></div>'; return; }
   el.innerHTML=arr.map(function(c){
-    var cl=clis.find(function(x){return x.id===c.cliente_id;});
-    var nom=cl?(cl.nombres||cl.alias||c.cliente_id):'Sin cliente';
+    var nom=_cotCliente(c);
     var est=cotEstado(c);
     var nd=detCotiz.filter(function(d){return d.cotizacion_id===c.id;}).length;
     var venc='';
@@ -3593,8 +3605,10 @@ function renderCotizaciones(){
 
 // ── Crear cotización desde el carrito de Pedido ──
 async function crearCotizacion(){
-  var cli=document.getElementById('sel-c').value;
-  if(!cli){ toast('Selecciona un cliente','err'); return; }
+  // El cliente es OPCIONAL en una cotizacion: muchas veces se cotiza a
+  // alguien que todavia no esta en la base. Se exige recien al pasarla
+  // a pedido, que ahi si tiene que tener a quien facturarle.
+  var cli=document.getElementById('sel-c').value||null;
   if(!carrito.length){ toast('El carrito está vacío','err'); return; }
   if(!sesion.vendedor){ toast('Selecciona el vendedor','err'); return; }
   var btn=document.getElementById('btn-cotizar'); if(btn) btn.disabled=true;
@@ -3611,9 +3625,11 @@ async function crearCotizacion(){
       return {id:gid(),cotizacion_id:id,producto_id:it.id,cantidad:cant,
               precio_lista:lista,precio_final:fin,total:tot};
     });
+    var _cl=cli?(clis.find(function(x){return x.id===cli;})||{}):{};
     var cab={id:id,numero:num,fecha:f,fecha_vencimiento:_sumaDias(f,COT_VALIDEZ_DIAS),
-             cliente_id:cli,vendedor:sesion.vendedor,estado:'BORRADOR',
-             direccion:(clis.find(function(x){return x.id===cli;})||{}).direccion||'',
+             cliente_id:cli,cliente_nombre:cli?'':'',
+             vendedor:sesion.vendedor,estado:'BORRADOR',
+             direccion:_cl.direccion||'',
              observaciones:document.getElementById('txt-obs')?document.getElementById('txt-obs').value:'',
              condiciones:'Precios incluyen IGV. Validez '+COT_VALIDEZ_DIAS+' días. Sujeto a disponibilidad de stock.',
              total:sub,descuento_total:desc,venta_id:null};
@@ -3628,12 +3644,35 @@ async function crearCotizacion(){
   finally{ if(btn) btn.disabled=false; }
 }
 
+// Nombre a mostrar de una cotizacion: el cliente de la base si lo tiene,
+// si no el nombre libre que se escribio, y si no nada.
+function _cotCliente(c){
+  if(!c) return 'Sin cliente';
+  var cl=clis.find(function(x){return x.id===c.cliente_id;});
+  if(cl) return cl.nombres||cl.alias||'Sin nombre';
+  return (c.cliente_nombre||'').trim()||'Sin cliente';
+}
+
 function abrirCot(id){
   var c=cotizaciones.find(function(x){return x.id===id;}); if(!c) return;
   cotActual=c;
   cotDets=detCotiz.filter(function(d){return d.cotizacion_id===id;}).map(function(d){return Object.assign({},d);});
   var cl=clis.find(function(x){return x.id===c.cliente_id;});
-  document.getElementById('cot-sub').textContent=(c.numero||'')+' · '+(cl?(cl.nombres||cl.alias||''):'Sin cliente');
+  document.getElementById('cot-sub').textContent=(c.numero||'')+' · '+_cotCliente(c);
+  // Nombre que sale en el PDF. Si la cotizacion esta amarrada a un
+  // cliente de la base, se muestra el suyo y no se deja editar.
+  var _ic=document.getElementById('cot-cli'), _in=document.getElementById('cot-cli-nota');
+  if(_ic){
+    if(cl){
+      _ic.value=cl.nombres||cl.alias||''; _ic.disabled=true;
+      _ic.style.background='#f1f5f9'; _ic.style.color='#64748b';
+      if(_in) _in.textContent='Viene de la ficha del cliente. Para cambiarlo, editá el cliente.';
+    } else {
+      _ic.value=c.cliente_nombre||''; _ic.disabled=false;
+      _ic.style.background=''; _ic.style.color='';
+      if(_in) _in.textContent='Cotización sin cliente registrado. Este nombre es solo para el PDF.';
+    }
+  }
   document.getElementById('cot-est').value=(c.estado==='VENCIDA'?'ENVIADA':(c.estado||'BORRADOR'));
   document.getElementById('cot-venc').value=c.fecha_vencimiento||'';
   document.getElementById('cot-cond').value=c.condiciones||'';
@@ -3646,10 +3685,65 @@ function abrirCot(id){
   _cv.disabled=(sesion.rol!=='gerente');
   document.getElementById('fg-cot-vend').style.opacity=(sesion.rol==='gerente')?'1':'.6';
   document.getElementById('cot-btn-conv').style.display=c.venta_id?'none':'block';
+  // El boton de asignar cliente solo aparece si falta y no esta convertida
+  var _bc=document.getElementById('cot-btn-cli');
+  if(_bc) _bc.style.display=(!c.cliente_id&&!c.venta_id)?'block':'none';
   cotRenderProds();
   document.getElementById('MCOT').classList.add('open');
 }
 function cerrarCot(){ document.getElementById('MCOT').classList.remove('open'); cotActual=null; }
+
+// ── Asignar un cliente de la base a una cotizacion que no tenia ──
+function cotAsignarCliente(){
+  var box=document.getElementById('cot-cli-box');
+  box.style.display='block';
+  var b=document.getElementById('cot-cli-busq');
+  // Arranca con lo que ya se escribio como nombre libre
+  b.value=(cotActual&&cotActual.cliente_nombre||'').trim();
+  cotFiltrarClientes();
+  b.focus();
+}
+function cotFiltrarClientes(){
+  var q=(document.getElementById('cot-cli-busq').value||'').toLowerCase().trim();
+  var sel=document.getElementById('cot-cli-sel');
+  var toks=q.split(/\s+/).filter(Boolean);
+  var arr=clis.filter(function(c){
+    if(!toks.length) return true;
+    var t=((c.nombres||'')+' '+(c.alias||'')+' '+(c.dni_ruc||'')+' '+(c.telefono||'')).toLowerCase();
+    return toks.every(function(k){ return t.indexOf(k)>=0; });
+  }).sort(function(a,b){
+    return (a.nombres||a.alias||'').localeCompare(b.nombres||b.alias||'');
+  }).slice(0,200);
+  sel.innerHTML=arr.length
+    ? arr.map(function(c){
+        return '<option value="'+c.id+'">'+(c.nombres||c.alias||'(sin nombre)')
+          +(c.dni_ruc?'  ·  '+c.dni_ruc:'')+'</option>';
+      }).join('')
+    : '<option value="" disabled>No hay clientes que coincidan</option>';
+  if(arr.length===1) sel.value=arr[0].id;
+}
+async function cotConfirmarCliente(){
+  if(!cotActual) return;
+  var id=document.getElementById('cot-cli-sel').value;
+  if(!id){ toast('Elegí un cliente de la lista','err'); return; }
+  var cl=clis.find(function(x){return x.id===id;});
+  if(!cl){ toast('Cliente no encontrado','err'); return; }
+  try{
+    // Al amarrarla a un cliente real, el nombre libre deja de usarse
+    var upd={cliente_id:id,cliente_nombre:null};
+    // Si la cotizacion no tenia direccion propia, se toma la del cliente
+    var dirAct=(document.getElementById('cot-dir').value||'').trim();
+    if(!dirAct&&cl.direccion){ upd.direccion=cl.direccion; }
+    await sbUpd('cotizaciones',cotActual.id,upd);
+    Object.assign(cotActual,upd);
+    var ix=cotizaciones.findIndex(function(x){return x.id===cotActual.id;});
+    if(ix>=0) Object.assign(cotizaciones[ix],upd);
+    document.getElementById('cot-cli-box').style.display='none';
+    toast('✓ Cliente asignado: '+(cl.nombres||cl.alias||''),'ok');
+    abrirCot(cotActual.id);
+    renderCotizaciones();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
 
 function cotRenderProds(){
   var el=document.getElementById('cot-prods');
@@ -3694,6 +3788,9 @@ async function cotGuardar(){
              observaciones:document.getElementById('cot-obs').value,
              direccion:document.getElementById('cot-dir').value,
              total:tot,descuento_total:reb};
+    // Nombre libre: solo cuando la cotizacion no tiene cliente de la base
+    var _ic=document.getElementById('cot-cli');
+    if(_ic&&!_ic.disabled&&!cotActual.cliente_id) upd.cliente_nombre=_ic.value.trim();
     var _cvs=document.getElementById('cot-vend');
     if(_cvs&&!_cvs.disabled&&_cvs.value) upd.vendedor=_cvs.value;
     await sbUpd('cotizaciones',cotActual.id,upd);
@@ -3731,6 +3828,16 @@ async function cotConvertir(){
   if(!cotActual) return;
   if(cotActual.venta_id){ alert('Esta cotización ya fue convertida.'); return; }
   if(!cotDets.length){ toast('La cotización no tiene productos','err'); return; }
+  // Una cotizacion puede ir sin cliente, un pedido NO: hay que saber a
+  // quien se le factura y a quien se le cobra.
+  if(!cotActual.cliente_id){
+    alert('Esta cotización no tiene cliente registrado'
+      +(cotActual.cliente_nombre?' (figura como "'+cotActual.cliente_nombre+'", solo para el PDF)':'')
+      +'.\n\nPara pasarla a pedido primero hay que asignarle un cliente de la base, '
+      +'porque el pedido necesita a quién facturar y a quién cobrar.\n\n'
+      +'Creá el cliente en la pestaña Clientes y después asignalo acá con "Asignar cliente".');
+    return;
+  }
   var tot=cotDets.reduce(function(s,d){return s+parseFloat(d.total||0);},0);
   if(!confirm('¿Convertir '+(cotActual.numero||'')+' en un pedido por S/ '+tot.toFixed(2)+'?\n\nSe creará una venta nueva. La cotización quedará marcada como APROBADA.')) return;
   var btn=document.getElementById('cot-btn-conv'); btn.disabled=true;
@@ -3807,7 +3914,7 @@ function cotPDF(silencioso){
   doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(40,40,40);
   var yy=51.5;
   doc.text('RUC / DNI:  '+(cl.dni_ruc||'—'),15,yy); yy+=4;
-  doc.text(doc.splitTextToSize('DENOMINACIÓN:  '+(cl.nombres||cl.alias||'—'),104),15,yy); yy+=4;
+  doc.text(doc.splitTextToSize('DENOMINACIÓN:  '+_cotCliente(c).replace('Sin cliente','—'),104),15,yy); yy+=4;
   // Dirección propia de la cotización. Si está vacía, no se imprime la línea.
   var _dir=(c.direccion!=null?c.direccion:(cl.direccion||'')).trim();
   if(_dir) doc.text(doc.splitTextToSize('DIRECCIÓN:  '+_dir,104),15,yy);
@@ -4318,7 +4425,7 @@ var TOL_PAGO=0.50;
 // Se muestra en la pantalla de ingreso y en Inicio. Sirve para
 // saber de un vistazo si el navegador esta usando la ultima
 // subida o una copia vieja guardada en cache.
-var APP_VER='2026-10-22';
+var APP_VER='2026-11-02';
 function pintarVersion(){
   ['appVer','appVerInicio'].forEach(function(id){
     var el=document.getElementById(id);
