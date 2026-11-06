@@ -988,6 +988,14 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="fg"><label>Cantidad</label>
       <input type="number" id="edet-qty" step="any" min="0" class="minp" style="width:100%">
     </div>
+    <div class="fg" id="fg-edet-costo"><label>Costo unitario (S/) — solo gerente</label>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input type="number" id="edet-costo" step="0.0001" min="0" oninput="uEdetTotal()" class="minp" style="flex:1;">
+        <button type="button" onclick="edetCostoDelProducto()" title="Traer el costo que tiene el producto hoy"
+          style="padding:9px 11px;background:#e2e8f0;color:#475569;border:none;border-radius:10px;font-family:inherit;font-size:.72rem;font-weight:800;cursor:pointer;white-space:nowrap;">Usar el del producto</button>
+      </div>
+      <div id="edet-costo-nota" style="font-size:.68rem;color:var(--mu);margin-top:4px;"></div>
+    </div>
     <div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
       <div style="font-size:.75rem;font-weight:700;color:var(--mu);">Nuevo subtotal:</div>
       <div id="edet-total" style="font-size:1.1rem;font-weight:900;color:var(--a);">S/ 0.00</div>
@@ -2472,8 +2480,8 @@ async function abrirE(vid){
                  ⚠️ Sin costo cargado — el gerente debe confirmarlo para que genere comisión
                </div>`;
         }
-        return aviso+`<div class="sr" style="cursor:pointer;" onclick="abrirEditDet('${d.id}','${(pr.nombre||'').replace(/'/g,"\\'")}',${d.precio_final||0},${d.cantidad||1},'${d.producto_id||''}')">
-          <span class="sl">${d.cantidad}x ${pr.nombre}${cu>0?`<span style="display:block;font-size:.64rem;color:var(--mu);font-weight:600;">costo S/ ${cu.toFixed(2)} c/u</span>`:''}</span>
+        return aviso+`<div class="sr" style="cursor:pointer;" onclick="abrirEditDet('${d.id}','${(pr.nombre||'').replace(/'/g,"\\'")}',${d.precio_final||0},${d.cantidad||1},'${d.producto_id||''}',${cu||0})">
+          <span class="sl">${d.cantidad}x ${pr.nombre}${cu>0?`<span style="display:block;font-size:.64rem;color:${cu>(parseFloat(d.precio_final||0)/1.18)?'var(--d)':'var(--mu)'};font-weight:600;">costo S/ ${cu.toFixed(2)} c/u${cu>(parseFloat(d.precio_final||0)/1.18)?' ⚠ mayor al precio':''}</span>`:''}</span>
           <div style="display:flex;align-items:center;gap:6px;">
             <span class="sv">S/ ${parseFloat(d.total||0).toFixed(2)}</span>
             <span style="font-size:.65rem;color:var(--p);font-weight:800;">✏️</span>
@@ -4514,7 +4522,7 @@ var TOL_PAGO=0.50;
 // Se muestra en la pantalla de ingreso y en Inicio. Sirve para
 // saber de un vistazo si el navegador esta usando la ultima
 // subida o una copia vieja guardada en cache.
-var APP_VER='2026-11-06c';
+var APP_VER='2026-11-06d';
 function pintarVersion(){
   ['appVer','appVerInicio'].forEach(function(id){
     var el=document.getElementById(id);
@@ -7206,12 +7214,20 @@ async function renderCostos(){
   var nSin=lista.filter(function(x){return x.sin;}).length;
   var nSinVend=lista.filter(function(x){return x.sin&&x.v.lin>0;}).length;
   var nInc=lista.filter(function(x){return x.inc;}).length;
+  // Si se esta buscando algo, el filtro no manda: se busca en TODOS.
+  // Antes, apenas le cargabas el costo a un producto desaparecia de la
+  // lista "Sin costo" y no habia forma obvia de volver a encontrarlo.
+  var buscando=!!q;
   var arr=lista.filter(function(x){
+    if(q){
+      var t=((x.p.nombre||'')+' '+(x.p.codigo||'')+' '+(x.p.categoria||'')+' '+x.p.id).toLowerCase();
+      if(t.indexOf(q)<0) return false;
+      return true;
+    }
     if(filtro==='sin'&&!x.sin) return false;
     if(filtro==='inc'&&!x.inc) return false;
     if(filtro==='manual'&&x.tc.t!=='MANUAL') return false;
     if(filtro==='receta'&&x.tc.t==='MANUAL') return false;
-    if(q&&(x.p.nombre||'').toLowerCase().indexOf(q)<0&&String(x.p.id).toLowerCase().indexOf(q)<0) return false;
     return true;
   }).sort(function(a,b){ return b.v.lin-a.v.lin||(a.p.nombre||'').localeCompare(b.p.nombre||''); });
 
@@ -7231,9 +7247,10 @@ async function renderCostos(){
        return '<option value="'+o[0]+'"'+(o[0]===filtro?' selected':'')+'>'+o[1]+'</option>';}).join('')
     +'</select></div>'
     +'<button onclick="recalcularConVistaPrevia()" style="width:100%;padding:10px;background:var(--card);color:var(--p);border:1.5px solid var(--p);border-radius:10px;font-family:inherit;font-size:.8rem;font-weight:800;cursor:pointer;margin-bottom:10px;">🔄 Recalcular costos desde recetas</button>'
-    +'<div style="font-size:.7rem;color:var(--mu);margin-bottom:8px;">Ordenado por los más vendidos. El costo va <b>sin IGV</b>. Se guarda al salir de la casilla.</div>';
+    +'<div style="font-size:.7rem;color:var(--mu);margin-bottom:8px;">Ordenado por los más vendidos. El costo va <b>sin IGV</b>. Se guarda al salir de la casilla.'
+    +(buscando?' <b style="color:var(--p);">Buscando en todos los productos, sin importar el filtro.</b>':'')+'</div>';
   var lst=document.getElementById('cst-list');
-  if(!arr.length){ lst.innerHTML='<div class="empty"><p>'+(filtro==='sin'?'✓ Ningún producto sin costo.':'Sin resultados.')+'</p></div>'; return; }
+  if(!arr.length){ lst.innerHTML='<div class="empty"><p>'+(buscando?'Ningún producto coincide con la búsqueda.':(filtro==='sin'?'✓ Ningún producto sin costo.':'Sin resultados.'))+'</p></div>'; return; }
   lst.innerHTML=arr.map(function(x){
     var p=x.p, pvn=parseFloat(p.precio||0)/1.18;
     var mg=(x.c>0&&pvn>0)?((pvn-x.c)/pvn*100):null;
@@ -9410,7 +9427,7 @@ function renderHistPagos(){
 // ═══════════════════════════════════════════════════════════
 // EDITAR DETALLE DE VENTA
 // ═══════════════════════════════════════════════════════════
-function abrirEditDet(id,nombre,precio,qty,prodId){
+function abrirEditDet(id,nombre,precio,qty,prodId,costo){
   document.getElementById('edet-id').value=id;
   document.getElementById('MEDET-sub').textContent=nombre;
   document.getElementById('edet-precio').value=parseFloat(precio).toFixed(2);
@@ -9418,9 +9435,24 @@ function abrirEditDet(id,nombre,precio,qty,prodId){
   document.getElementById('edet-prod-orig').value=prodId||'';
   document.getElementById('edet-qty-orig').value=qty;
   document.getElementById('edet-busq').value='';
+  // El costo de la linea solo lo toca el gerente
+  var esGer=sesion.rol==='gerente';
+  document.getElementById('fg-edet-costo').style.display=esGer?'block':'none';
+  document.getElementById('edet-costo').value=(parseFloat(costo||0)>0)?parseFloat(costo).toFixed(4).replace(/0+$/,'').replace(/\.$/,''):'';
   edetFiltrar(prodId||'');
   uEdetTotal();
   document.getElementById('MEDET').classList.add('open');
+}
+
+// Traer el costo que el producto tiene hoy, para pisar uno mal cargado
+function edetCostoDelProducto(){
+  var p=prods.find(function(x){return x.id===document.getElementById('edet-prod').value;});
+  if(!p){ toast('Elegí un producto primero','err'); return; }
+  var c=parseFloat(p.costo||0);
+  if(!(c>0)){ toast('Ese producto no tiene costo cargado. Cargalo en Stock → Costos.','err'); return; }
+  document.getElementById('edet-costo').value=c;
+  uEdetTotal();
+  toast('Costo del producto: S/ '+c.toFixed(2),'ok');
 }
 
 // Lista de productos del selector, filtrada por lo que se escriba
@@ -9465,6 +9497,24 @@ function uEdetTotal(){
   var p=parseFloat(document.getElementById('edet-precio').value)||0;
   var q=parseFloat(document.getElementById('edet-qty').value)||0;
   document.getElementById('edet-total').textContent='S/ '+(p*q).toFixed(2);
+
+  // Control de cordura del costo: si supera al precio neto, el margen
+  // queda negativo y la comision cae al piso del 1%. Casi siempre es
+  // un error de tipeo, no una venta a perdida.
+  var cn=document.getElementById('edet-costo-nota');
+  if(cn){
+    var c=parseFloat(document.getElementById('edet-costo').value)||0;
+    var pn=p/1.18;
+    var pr=prods.find(function(x){return x.id===document.getElementById('edet-prod').value;});
+    var cp=pr?parseFloat(pr.costo||0):0;
+    if(!(c>0)) cn.innerHTML='<span style="color:#92400e;">Sin costo: la venta no genera comisión.</span>';
+    else if(c>pn) cn.innerHTML='<span style="color:#b91c1c;font-weight:800;">⚠ El costo (S/ '+c.toFixed(2)
+      +') supera al precio sin IGV (S/ '+pn.toFixed(2)+'). El margen queda negativo'
+      +(cp>0?' — el producto hoy figura en S/ '+cp.toFixed(2):'')+'.</span>';
+    else cn.innerHTML='Margen de la línea: S/ '+((pn-c)*q).toFixed(2)
+      +' ('+(pn>0?Math.round((pn-c)/pn*100):0)+'%)'
+      +(cp>0&&Math.abs(cp-c)>0.009?'  ·  el producto hoy figura en S/ '+cp.toFixed(2):'');
+  }
   // Aviso de impacto en stock, solo si la venta ya salió del almacén
   var el=document.getElementById('edet-stock'); if(!el) return;
   var v=ventas.find(function(x){return x.id===editId;});
@@ -9548,6 +9598,14 @@ async function saveDetalle(){
       upd.precio_base=parseFloat(pn.precio||0);
       // Congelar el costo del producto nuevo (solo si lo tiene)
       upd.costo_unitario=parseFloat(pn.costo||0)>0?parseFloat(pn.costo):null;
+    }
+    // Costo escrito a mano por el gerente: manda sobre todo lo demas
+    if(sesion.rol==='gerente'){
+      var cm=document.getElementById('edet-costo').value;
+      if(cm!==''&&cm!=null){
+        var cmv=parseFloat(cm);
+        upd.costo_unitario=cmv>0?cmv:null;
+      }
     }
     await sbUpd('detalle_ventas',id,upd);
 
