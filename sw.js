@@ -18,7 +18,7 @@
 //  CACHE_VER por la fecha del dia. Eso borra el cache anterior.
 // ═══════════════════════════════════════════════════════════
 
-const CACHE_VER = 'tomapedidos-2026-11-06b';
+const CACHE_VER = 'tomapedidos-2026-11-06c';
 const ESENCIALES = ['./', './index.html', './manifest.json'];
 
 // ── Instalacion: guardar lo minimo y pasar a activo enseguida ──
