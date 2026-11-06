@@ -1971,7 +1971,11 @@ function confA(){
   else carrito.push({id:mProd.id,nombre:mProd.nombre,precioBase:parseFloat(mProd.precio||0),precio,qty:mQty,comision:parseFloat(mProd.comision||0)});
   document.getElementById('MA').classList.remove('open');
   renderD(); uDC();
-  if(stockStatus==='agotado') toast('⚠️ Sin stock — producto agotado','err');
+  // Producto sin costo cargado: el pedido se toma igual, pero la venta
+  // no va a generar comision hasta que el gerente confirme el costo.
+  if(!(parseFloat(mProd.costo||0)>0))
+    toast('⚠️ '+mProd.nombre+' no tiene costo cargado — la venta no generará comisión hasta que el gerente lo confirme','err');
+  else if(stockStatus==='agotado') toast('⚠️ Sin stock — producto agotado','err');
   else if(stockStatus==='insuficiente') toast('⚠️ Stock insuficiente para esta cantidad','err');
   else if(stockStatus==='bajo') toast('⚠️ Stock bajo — quedan pocas unidades','err');
   else toast('✓ Producto agregado','ok');
@@ -2407,10 +2411,33 @@ async function abrirE(vid){
     const det=await sbGet('detalle_ventas',`?venta_id=eq.${vid}`);
     if(!det.length){pEl.innerHTML='<p style="font-size:.75rem;color:var(--mu);text-align:center;padding:8px">Sin productos</p>';}
     else{
+      const esGer=sesion.rol==='gerente';
       pEl.innerHTML=det.map(d=>{
         const pr=prods.find(p=>p.id===d.producto_id)||{nombre:d.producto_id||'Producto'};
-        return`<div class="sr" style="cursor:pointer;" onclick="abrirEditDet('${d.id}','${(pr.nombre||'').replace(/'/g,"\\'")}',${d.precio_final||0},${d.cantidad||1})">
-          <span class="sl">${d.cantidad}x ${pr.nombre}</span>
+        const cu=_costoLinea(d);
+        const falta=!(cu>0)&&parseFloat(d.cantidad||0)>0;
+        let aviso='';
+        if(falta){
+          // Solo el gerente carga el costo: el vendedor no define la
+          // base de su propia comision.
+          aviso=esGer
+            ? `<div style="padding:10px 12px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:0 8px 8px 0;margin:0 0 8px 0;">
+                 <div style="font-size:.7rem;font-weight:800;color:#92400e;margin-bottom:6px;">⚠️ SIN COSTO — esta venta no genera comisión</div>
+                 <div style="display:flex;gap:6px;align-items:center;">
+                   <span style="font-size:.72rem;color:#92400e;">Costo unitario S/</span>
+                   <input type="number" step="0.0001" min="0" id="cst-${d.id}" placeholder="0.00"
+                     style="flex:1;max-width:120px;padding:6px 8px;border:1.5px solid #f59e0b;border-radius:8px;font-family:inherit;font-size:.8rem;outline:none;">
+                   <button onclick="guardarCostoLinea('${d.id}','${vid}')"
+                     style="padding:6px 12px;background:#f59e0b;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:.72rem;font-weight:800;cursor:pointer;">Confirmar</button>
+                 </div>
+                 <div style="font-size:.64rem;color:#92400e;opacity:.8;margin-top:5px;">Se guarda solo en esta venta. Para el producto, usá Stock → Costos.</div>
+               </div>`
+            : `<div style="padding:8px 12px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:0 8px 8px 0;margin:0 0 8px 0;font-size:.7rem;color:#92400e;font-weight:700;">
+                 ⚠️ Sin costo cargado — el gerente debe confirmarlo para que genere comisión
+               </div>`;
+        }
+        return aviso+`<div class="sr" style="cursor:pointer;" onclick="abrirEditDet('${d.id}','${(pr.nombre||'').replace(/'/g,"\\'")}',${d.precio_final||0},${d.cantidad||1})">
+          <span class="sl">${d.cantidad}x ${pr.nombre}${cu>0?`<span style="display:block;font-size:.64rem;color:var(--mu);font-weight:600;">costo S/ ${cu.toFixed(2)} c/u</span>`:''}</span>
           <div style="display:flex;align-items:center;gap:6px;">
             <span class="sv">S/ ${parseFloat(d.total||0).toFixed(2)}</span>
             <span style="font-size:.65rem;color:var(--p);font-weight:800;">✏️</span>
@@ -2432,6 +2459,27 @@ async function abrirE(vid){
   document.getElementById('ME').classList.add('open');
 }
 function cME(e){if(e.target===document.getElementById('ME'))document.getElementById('ME').classList.remove('open');}
+
+// ── Confirmar el costo de UNA linea de venta ──
+// Se graba solo en esa linea (costo_unitario), nunca en el producto:
+// un pedido no puede alterar el costo maestro. Desde este momento la
+// linea queda congelada y ya no cambia aunque el costo suba despues.
+async function guardarCostoLinea(detId,ventaId){
+  if(sesion.rol!=='gerente'){ toast('Solo el gerente puede confirmar costos','err'); return; }
+  var inp=document.getElementById('cst-'+detId);
+  var val=parseFloat((inp||{}).value);
+  if(!(val>0)){ toast('Ingresá un costo mayor a cero','err'); return; }
+  try{
+    await sbUpd('detalle_ventas',detId,{costo_unitario:val});
+    // Refrescar la copia en memoria si la tenemos cargada
+    if(window.dets&&dets.length){
+      var dd=dets.find(function(x){return x.id===detId;});
+      if(dd) dd.costo_unitario=val;
+    }
+    toast('✓ Costo confirmado: S/ '+val.toFixed(2)+' — congelado en esta venta','ok');
+    abrirE(ventaId);
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
 
 // Insignia de estado de despacho para la lista de ventas
 function dspBadge(v){
@@ -4429,7 +4477,7 @@ var TOL_PAGO=0.50;
 // Se muestra en la pantalla de ingreso y en Inicio. Sirve para
 // saber de un vistazo si el navegador esta usando la ultima
 // subida o una copia vieja guardada en cache.
-var APP_VER='2026-11-06';
+var APP_VER='2026-11-06b';
 function pintarVersion(){
   ['appVer','appVerInicio'].forEach(function(id){
     var el=document.getElementById(id);
@@ -4539,6 +4587,29 @@ function calcComisionVenta(v,dets){
     r.regla='SIN_DETALLE';
     r.formula='Sin comision — la venta no tiene productos registrados';
     r.alerta='VENTA SIN PRODUCTOS — registrar el detalle para que calcule';
+    return r;
+  }
+
+  // ── Ningun producto puede quedar sin costo ──
+  // Costo 0 no significa gratis, significa que no se cargo. Si se
+  // pagara igual, el margen se leeria 100% y la comision saldria
+  // inflada. La venta espera hasta que el gerente confirme el costo.
+  var _faltan=(dets||[]).filter(function(d){
+    return parseFloat(d.cantidad||0)>0 && !(_costoLinea(d)>0);
+  });
+  if(_faltan.length){
+    r.regla='COSTO_PENDIENTE';
+    r.formula='Sin comision — hay '+_faltan.length+' producto'+(_faltan.length===1?'':'s')+' sin costo cargado';
+    r.alerta='COSTO PENDIENTE — el gerente debe confirmar el costo de '
+      +_faltan.map(function(d){
+          var p=prods.find(function(x){return x.id===d.producto_id;});
+          return (p&&p.nombre)||d.producto_id;
+        }).slice(0,3).join(', ')
+      +(_faltan.length>3?' y '+(_faltan.length-3)+' mas':'');
+    (dets||[]).forEach(function(d){
+      r.costoTotal+=_costoLinea(d)*parseFloat(d.cantidad||0);
+    });
+    r.costoProp=r.costoTotal;
     return r;
   }
 
@@ -4682,13 +4753,17 @@ async function renderComisiones(){
   el.innerHTML='<div class="empty"><p>Calculando comisiones...</p></div>';
   try{
     // La comisión se devenga con el COBRO: entran las ventas con algún pago
-    const ventasCompletas=ventas.filter(v=>v.estado!=='ANULADO'&&_pagadoDe(v.id)>0);
+    // Solo las ventas CERRADAS generan comisión
+    const ventasAbiertas=ventas.filter(v=>v.estado!=='ANULADO'&&_pagadoDe(v.id)>0&&!ventaCerrada(v));
+    const ventasCompletas=ventas.filter(v=>v.estado!=='ANULADO'&&_pagadoDe(v.id)>0&&ventaCerrada(v));
     if(!ventasCompletas.length){
       el.innerHTML='<div class="empty"><p>Aún no hay cobros registrados.<br>La comisión se calcula sobre lo que el cliente paga.</p></div>';
       return;
     }
-    // Mes de la comisión = mes de la fecha de pago real; si aún debe, el del último pago
+    // Mes de la comisión = mes del CIERRE de la venta.
+    // Una venta abierta no tiene mes: no genera comisión todavía.
     const _mesCom=v=>{
+      if(!ventaCerrada(v)) return '';
       const fr=fechaPagoReal(v);
       let f=fr;
       if(!f){ const a=_abonosDe(v.id); f=a.length?(a[a.length-1].fecha||''):''; }
@@ -4716,12 +4791,16 @@ async function renderComisiones(){
     // Calcular comisiones por vendedor
     const comVend={};
     const detalleVend={};
+    const _frenadas=[];
     ventasFilt.forEach(v=>{
       const vend=v.vendedor||'Sin vendedor';
       if(!comVend[vend]){comVend[vend]=0;detalleVend[vend]=[];}
       const dets=allDets.filter(d=>d.venta_id===v.id);
       const r=calcComisionVenta(v,dets);
       comVend[vend]+=r.comision;
+      if(r.regla==='COSTO_PENDIENTE'){ _frenadas.push({id:v.id,vend:vend,
+        cli:(clis.find(x=>x.id===v.cliente_id)||{}).nombres||'?',
+        tot:r.facturado, por:r.alerta}); }
       const c=clis.find(x=>x.id===v.cliente_id);
       const parcial=!estaPagada(v);
       detalleVend[vend].push({
@@ -4756,10 +4835,32 @@ async function renderComisiones(){
         </div>
         <div class="com-summary-item">
           <div class="com-summary-val">${ventasFilt.length}</div>
-          <div class="com-summary-lbl">Ventas completadas</div>
+          <div class="com-summary-lbl">Ventas cerradas</div>
         </div>
       </div>
     </div>
+    ${_frenadas.length?`
+    <div style="margin:0 0 14px 0;padding:14px 16px;background:#fff7ed;border:1.5px solid #fdba74;border-radius:14px;">
+      <div style="font-size:.82rem;font-weight:900;color:#9a3412;margin-bottom:4px;">
+        ⚠️ ${_frenadas.length} venta${_frenadas.length===1?'':'s'} sin comisión por costo pendiente
+      </div>
+      <div style="font-size:.72rem;color:#9a3412;opacity:.85;line-height:1.45;margin-bottom:10px;">
+        Tienen productos sin costo cargado. No se paga comisión sobre un costo que no se conoce.
+        ${sesion.rol==='gerente'?'Abrí cada venta y confirmá el costo.':'El gerente tiene que confirmar el costo.'}
+      </div>
+      ${_frenadas.slice(0,8).map(f=>`
+        <div onclick="abrirE('${f.id}')" style="cursor:pointer;display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid #fed7aa;">
+          <span style="font-size:.74rem;color:#7c2d12;font-weight:700;">${f.cli} · ${f.vend}</span>
+          <span style="font-size:.74rem;color:#9a3412;font-weight:800;white-space:nowrap;">S/ ${f.tot.toFixed(2)} ›</span>
+        </div>`).join('')}
+      ${_frenadas.length>8?`<div style="font-size:.68rem;color:#9a3412;padding-top:7px;">y ${_frenadas.length-8} más — están en la hoja "Revisar" del Excel</div>`:''}
+    </div>`:''}
+    ${ventasAbiertas.length?`
+    <div style="margin:0 0 14px 0;padding:12px 16px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;">
+      <div style="font-size:.76rem;font-weight:800;color:#475569;">
+        ${ventasAbiertas.length} venta${ventasAbiertas.length===1?'':'s'} con cobro parcial — generan comisión al terminar de cobrarse
+      </div>
+    </div>`:''}
 
     <!-- Botones exportar -->
     <div style="display:flex;gap:8px;margin-bottom:14px;">
@@ -4838,6 +4939,7 @@ var COL_ALERTA={
   SIN_COSTO:  {fondo:'FFF3E8FF', texto:'FF6B21A8'},   // violeta
   SIN_DETALLE:{fondo:'FFE5E7EB', texto:'FF374151'},   // gris
   NO_CERRADA: {fondo:'FFF1F5F9', texto:'FF64748B'},   // gris claro
+  COSTO_PENDIENTE:{fondo:'FFFFEDD5', texto:'FF9A3412'}, // naranja
   PARCIAL:    {fondo:'FFEFF6FF', texto:'FF1D4ED8'}    // azul
 };
 // Escribe un libro con estilos.
@@ -4935,7 +5037,7 @@ function _armarExcelComisiones(allDets){
   var T={fact:0,pag:0,neto:0,costo:0,com:0,n:0,completas:0,parciales:0,dc:[],df:[],at:0,ce:0};
   var TL={n:0,bajo:0,neg:0,sinPrecio:0,sinCosto:0,com:0,ajust:0,
           sinCostoCom:0,sinCostoNeto:0,sinDetalle:0,sinDetalleCom:0,
-          cierreMan:0,cierreManSaldo:0,cierreManExtra:0,abiertas:0,abiertasSaldo:0};
+          cierreMan:0,cierreManSaldo:0,cierreManExtra:0,abiertas:0,abiertasSaldo:0,costoPend:0,costoPendFact:0};
   var alertas=[];
 
   vs.forEach(function(v){
@@ -5013,6 +5115,7 @@ function _armarExcelComisiones(allDets){
     // Una venta abierta no genera comision: no va al detalle por
     // producto, para que la hoja solo tenga lo que se paga.
     if(r.regla==='NO_CERRADA'){ TL.abiertas++; TL.abiertasSaldo+=saldo; return; }
+    if(r.regla==='COSTO_PENDIENTE'){ TL.costoPend++; TL.costoPendFact+=r.facturado; return; }
 
     var lin=dets.map(function(d){ return calcComisionLinea(d,vend,r.proporcion); });
     var sumaPropia=lin.reduce(function(s,L){ return s+L.comision; },0);
@@ -5134,6 +5237,11 @@ function _armarExcelComisiones(allDets){
     ['Ventas abiertas con algo cobrado',TL.abiertas],
     ['  saldo que falta cobrar S/',_r2(TL.abiertasSaldo)],
     ['  comision que generan hoy S/','0.00 — se paga recien cuando cierren'],
+    ['',''],
+    ['Ventas frenadas por COSTO PENDIENTE (naranja)',TL.costoPend],
+    ['  facturado involucrado S/',_r2(TL.costoPendFact)],
+    ['  comision que generan hoy S/','0.00 — no se paga sobre un costo que no se conoce'],
+    ['  como se destraba','Abrir la venta y confirmar el costo de cada producto marcado (solo gerente)'],
     ['',''],
     ['VENTAS CERRADAS A MANO',''],
     ['Cuantas son',TL.cierreMan],
@@ -5281,6 +5389,7 @@ function _armarExcelComisiones(allDets){
     if(fila[iReg]==='MC_BAJO')     return 'MC_BAJO';
     if(fila[iReg]==='SIN_DETALLE') return 'SIN_DETALLE';
     if(fila[iReg]==='NO_CERRADA')  return 'NO_CERRADA';
+    if(fila[iReg]==='COSTO_PENDIENTE') return 'COSTO_PENDIENTE';
     if(fila[iEst]==='PARCIAL')     return 'PARCIAL';
     return null;
   }
