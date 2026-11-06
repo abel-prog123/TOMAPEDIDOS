@@ -1630,7 +1630,9 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
 const SB_URL='https://twcainhpdfjeumwsgaaz.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR3Y2FpbmhwZGZqZXVtd3NnYWF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4ODI1NTgsImV4cCI6MjA5NjQ1ODU1OH0.BBH0TENh7IsKPdeUK3-ffLCpg8zEIMq9E7EBQ93edl0';
 const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const EMPRESA={nombre:'FROSTECH',ruc:'RUC: 20614298571',dir:'Av. Los Alisos Mza. B-Lote 4, APV Miguel Mujica Gallo, Callao',tel:'946 901 261',email:'asesoriasfrostech@gmail.com'};
+// emailVentas es el que sale en las COTIZACIONES. El otro queda para
+// la nota de venta y los documentos de compra.
+const EMPRESA={nombre:'FROSTECH',ruc:'RUC: 20614298571',dir:'Av. Los Alisos Mza. B-Lote 4, APV Miguel Mujica Gallo, Callao',tel:'946 901 261',email:'asesoriasfrostech@gmail.com',emailVentas:'Ventas.frostech@gmail.com'};
 
 // ── SUPABASE API ──────────────────────────────────────────
 async function sb(table, method='GET', body=null, filters=''){
@@ -3895,9 +3897,11 @@ function cotPDF(silencioso){
 
   // Datos de la empresa
   doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(90,90,90);
+  // Sin telefono: el celular depende del vendedor que cotiza, y el
+  // vendedor ya figura en el recuadro de la derecha.
   doc.text(['QUIMTEK INDUSTRIAL GROUP S.A.C.',
             EMPRESA.dir,
-            'Tel: '+EMPRESA.tel+'   |   '+EMPRESA.email],12,29);
+            EMPRESA.emailVentas],12,29);
 
   // Caja de cotización
   doc.setFillColor(N[0],N[1],N[2]); doc.rect(140,10,58,26,'F');
@@ -4425,7 +4429,7 @@ var TOL_PAGO=0.50;
 // Se muestra en la pantalla de ingreso y en Inicio. Sirve para
 // saber de un vistazo si el navegador esta usando la ultima
 // subida o una copia vieja guardada en cache.
-var APP_VER='2026-11-02';
+var APP_VER='2026-11-06';
 function pintarVersion(){
   ['appVer','appVerInicio'].forEach(function(id){
     var el=document.getElementById(id);
@@ -4468,6 +4472,15 @@ function fechaPagoReal(v){
   }
   return '';
 }
+// ── Venta CERRADA ──
+// Es el unico estado que genera comision. Se cierra de dos formas:
+//   · automatica: los abonos cubren el total
+//   · a mano: el area carga la fecha de pago total (comisiones)
+function ventaCerrada(v){
+  if(!v||v.estado==='ANULADO') return false;
+  return !!v.fecha_pago_real || estaPagada(v);
+}
+
 // Venta cerrada a mano: tiene fecha de pago cargada pero los abonos
 // no llegan a cubrir el total. Sirve para marcarla en los reportes.
 function cierreManual(v){
@@ -4507,6 +4520,17 @@ function calcComisionVenta(v,dets){
   r.proporcion=pagado/tot;
   r.pagadoNeto=pagado/1.18;
 
+  // ── La comision se gana al CERRAR la venta ──
+  // Mientras el cliente deba algo, la venta no genera comision, por mas
+  // que haya abonado la mayor parte. El cierre puede ser automatico
+  // (los abonos cubren el total) o a mano (fecha de pago total cargada).
+  if(!ventaCerrada(v)){
+    r.regla='NO_CERRADA';
+    r.formula='Sin comision — la venta todavia tiene saldo pendiente';
+    r.alerta='Venta abierta ('+Math.round(r.proporcion*100)+'% cobrado) — genera comision cuando se cierre';
+    return r;
+  }
+
   // Venta sin productos registrados: el costo saldria 0 y el margen se
   // leeria 100%, pagando comision sobre un margen que nadie verifico.
   // No es que el costo sea cero, es que no se conoce. Sin detalle no hay
@@ -4521,7 +4545,10 @@ function calcComisionVenta(v,dets){
   (dets||[]).forEach(function(d){
     r.costoTotal+=_costoLinea(d)*parseFloat(d.cantidad||0);
   });
-  r.costoProp=r.costoTotal*r.proporcion;
+  // Costo COMPLETO, sin prorratear: la venta esta cerrada, asi que toda
+  // la mercaderia salio del almacen. Si se cerro a mano perdonando un
+  // saldo, ese descuento sale del margen, que es donde corresponde.
+  r.costoProp=r.costoTotal;
   r.margenS=r.pagadoNeto-r.costoProp;     // MC en soles
   r.margenPct=r.pagadoNeto>0?(r.margenS/r.pagadoNeto*100):0;
 
@@ -4574,8 +4601,10 @@ function calcComisionLinea(d,vendedor,prop){
   r.totNeto=r.pvUnitNeto*r.qty;
   r.costoUnit=_costoLinea(d);
   r.costoLinea=r.costoUnit*r.qty;
+  // El ingreso se prorratea por lo cobrado (si se cerro perdonando un
+  // saldo), pero el costo va completo: el producto salio entero.
   r.cobradoNeto=r.totNeto*prop;
-  r.costoProp=r.costoLinea*prop;
+  r.costoProp=r.costoLinea;
   r.margenS=r.cobradoNeto-r.costoProp;
   r.margenPct=r.cobradoNeto>0?(r.margenS/r.cobradoNeto*100):0;
 
@@ -4808,6 +4837,7 @@ var COL_ALERTA={
   MC_NEGATIVO:{fondo:'FFFEE2E2', texto:'FFB91C1C'},   // rojo
   SIN_COSTO:  {fondo:'FFF3E8FF', texto:'FF6B21A8'},   // violeta
   SIN_DETALLE:{fondo:'FFE5E7EB', texto:'FF374151'},   // gris
+  NO_CERRADA: {fondo:'FFF1F5F9', texto:'FF64748B'},   // gris claro
   PARCIAL:    {fondo:'FFEFF6FF', texto:'FF1D4ED8'}    // azul
 };
 // Escribe un libro con estilos.
@@ -4862,7 +4892,11 @@ function _armarExcelComisiones(allDets){
 
   // La comision se devenga con el COBRO. El mes de una venta es el de
   // su fecha de pago real; si aun debe, el del ultimo pago recibido.
+  // Mes al que se imputa la comision: el del CIERRE de la venta.
+  // Una venta abierta no tiene mes, por eso no aparece en ningun
+  // periodo hasta que se termine de cobrar.
   function mesComision(v){
+    if(!ventaCerrada(v)) return '';
     var fr=fechaPagoReal(v);
     if(fOk(fr)) return mesDe(fr);
     var abs=_abonosDe(v.id);
@@ -4901,7 +4935,7 @@ function _armarExcelComisiones(allDets){
   var T={fact:0,pag:0,neto:0,costo:0,com:0,n:0,completas:0,parciales:0,dc:[],df:[],at:0,ce:0};
   var TL={n:0,bajo:0,neg:0,sinPrecio:0,sinCosto:0,com:0,ajust:0,
           sinCostoCom:0,sinCostoNeto:0,sinDetalle:0,sinDetalleCom:0,
-          cierreMan:0,cierreManSaldo:0,cierreManExtra:0};
+          cierreMan:0,cierreManSaldo:0,cierreManExtra:0,abiertas:0,abiertasSaldo:0};
   var alertas=[];
 
   vs.forEach(function(v){
@@ -4976,6 +5010,10 @@ function _armarExcelComisiones(allDets){
     // para que la suma de las lineas cuadre exactamente con la comision
     // que se paga por el pedido. Asi la hoja se puede sumar sin inventar
     // plata, y a la vez se ve que producto arrastra el margen.
+    // Una venta abierta no genera comision: no va al detalle por
+    // producto, para que la hoja solo tenga lo que se paga.
+    if(r.regla==='NO_CERRADA'){ TL.abiertas++; TL.abiertasSaldo+=saldo; return; }
+
     var lin=dets.map(function(d){ return calcComisionLinea(d,vend,r.proporcion); });
     var sumaPropia=lin.reduce(function(s,L){ return s+L.comision; },0);
     var sumaNeta=lin.reduce(function(s,L){ return s+L.cobradoNeto; },0);
@@ -5087,14 +5125,23 @@ function _armarExcelComisiones(allDets){
     ['  no generan comision','Antes pagaban 51.2% del neto porque el costo salia 0'],
     ['  comision que habrian pagado S/',_r2(TL.sinDetalleCom)],
     ['',''],
+    ['CUANDO SE GANA LA COMISION',''],
+    ['Regla','Solo cuando la venta se CIERRA, o sea cuando el cliente termina de pagar'],
+    ['Como se cierra','Automatico cuando los abonos cubren el total, o a mano con la fecha de pago total'],
+    ['Mientras tanto','La venta no genera comision, por mas que haya abonado la mayor parte'],
+    ['A que mes se imputa','Al mes del cierre, no al de cada abono'],
+    ['',''],
+    ['Ventas abiertas con algo cobrado',TL.abiertas],
+    ['  saldo que falta cobrar S/',_r2(TL.abiertasSaldo)],
+    ['  comision que generan hoy S/','0.00 — se paga recien cuando cierren'],
+    ['',''],
     ['VENTAS CERRADAS A MANO',''],
     ['Cuantas son',TL.cierreMan],
     ['  figuran como PAGADO','Porque tienen cargada la fecha de pago total (comisiones)'],
     ['  lo que falto abonar S/',_r2(TL.cierreManSaldo)],
     ['  se informa en','La columna OBSERVACION_COBRANZA de cada hoja'],
-    ['  la comision se calcula sobre','Lo COBRADO (los abonos), no sobre el total facturado'],
-    ['  si se pagara sobre el total facturado S/',_r2(TL.cierreManExtra)+' mas'],
-    ['  para que cierre al 100%','Registrar el abono que falta, o bajar el total si hubo descuento'],
+    ['  la comision se calcula sobre','Lo COBRADO, contra el costo COMPLETO de la mercaderia'],
+    ['  por que el costo completo','La mercaderia salio entera; el saldo perdonado sale del margen'],
     ['',''],
     ['ALERTAS',''],
     ['Ventas con algo que revisar',alertas.length]
@@ -5233,6 +5280,7 @@ function _armarExcelComisiones(allDets){
     if(fila[iReg]==='MC_NEGATIVO') return 'MC_NEGATIVO';
     if(fila[iReg]==='MC_BAJO')     return 'MC_BAJO';
     if(fila[iReg]==='SIN_DETALLE') return 'SIN_DETALLE';
+    if(fila[iReg]==='NO_CERRADA')  return 'NO_CERRADA';
     if(fila[iEst]==='PARCIAL')     return 'PARCIAL';
     return null;
   }
