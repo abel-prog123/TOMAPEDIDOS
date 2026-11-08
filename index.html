@@ -661,6 +661,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
   <div class="tabs" style="overflow-x:auto;flex-wrap:nowrap;">
     <div class="tab active" onclick="dashTab('resumen')" id="dtab-resumen" style="white-space:nowrap;">Resumen</div>
     <div class="tab" onclick="dashTab('despachos')" id="dtab-despachos" style="white-space:nowrap;">Despachos</div>
+    <div class="tab" onclick="dashTab('cobranzas')" id="dtab-cobranzas" style="white-space:nowrap;">📋 Cobranzas</div>
     <div class="tab" onclick="dashTab('comisiones')" id="dtab-comisiones" style="white-space:nowrap;">Comisiones</div>
     <div class="tab" onclick="dashTab('utilidad')" id="dtab-utilidad" style="white-space:nowrap;">💰 Utilidad</div>
     <div class="tab" onclick="dashTab('caja')" id="dtab-caja" style="white-space:nowrap;">🏦 Caja</div>
@@ -670,6 +671,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div id="dash-despachos" style="display:none"></div>
     <div id="dash-comisiones" style="display:none"></div>
     <div id="dash-utilidad" style="display:none"></div>
+    <div id="dash-cobranzas" style="display:none"></div>
     <div id="dash-caja" style="display:none"></div>
   </div>
 </div>
@@ -3234,7 +3236,7 @@ function getLocation(){
 
 // ── DASHBOARD TABS ────────────────────────────────────────
 function dashTab(t){
-  const ids=['resumen','despachos','comisiones','utilidad','caja'];
+  const ids=['resumen','despachos','cobranzas','comisiones','utilidad','caja'];
   ids.forEach(x=>{
     const el=document.getElementById('dash-'+x);
     const tab=document.getElementById('dtab-'+x);
@@ -3243,11 +3245,288 @@ function dashTab(t){
   });
   if(t==='despachos') renderDespachos();
   if(t==='resumen') renderDash();
+  if(t==='cobranzas') renderCobranzas();
   if(t==='comisiones') renderComisiones();
   if(t==='utilidad') renderUtilidad();
   if(t==='caja') renderCaja();
 }
 
+
+// ════════════════════════════════════════════════════════════
+//  COBRANZAS · CUENTAS POR COBRAR
+//
+//  Una venta esta en cartera mientras le falte cobrar algo.
+//  Las cerradas a mano (con fecha de pago total) NO entran:
+//  el area ya las dio por concluidas.
+//
+//  Dos vistas de lo mismo:
+//    · por venta   -> para revisar un pedido puntual
+//    · por cliente -> para salir a cobrar (se llama al cliente,
+//                     no a la factura)
+// ════════════════════════════════════════════════════════════
+var cobVista='cliente', cobTramo='', cobVend='', cobQ='';
+
+// Fecha valida (descarta los 1900 y 0226 que arrastra la migracion)
+function fOk(f){ return !!f && String(f)>='2020-01-01' && String(f)<='2099-12-31'; }
+
+function _hoyStr(){ return hoy(); }
+function _diasVenc(f){
+  if(!fOk(f)) return null;
+  return Math.round((pF(_hoyStr())-pF(f))/86400000);   // + = vencida
+}
+function _tramoDe(d){
+  if(d===null) return 'Sin fecha';
+  if(d<=0)  return 'Por vencer';
+  if(d<=15) return '1-15 días';
+  if(d<=30) return '16-30 días';
+  if(d<=60) return '31-60 días';
+  return 'Más de 60';
+}
+var COB_COLOR={
+  'Por vencer':  {bg:'#eff6ff',bd:'#93c5fd',tx:'#1d4ed8'},
+  '1-15 días':   {bg:'#fefce8',bd:'#fde047',tx:'#854d0e'},
+  '16-30 días':  {bg:'#fff7ed',bd:'#fdba74',tx:'#9a3412'},
+  '31-60 días':  {bg:'#fef2f2',bd:'#fca5a5',tx:'#b91c1c'},
+  'Más de 60':   {bg:'#fef2f2',bd:'#ef4444',tx:'#991b1b'},
+  'Sin fecha':   {bg:'#f8fafc',bd:'#cbd5e1',tx:'#475569'}
+};
+
+// Ventas que todavia deben algo
+function _cartera(){
+  return ventas.filter(function(v){
+    if(v.estado==='ANULADO') return false;
+    if(v.fecha_pago_real) return false;          // cerrada a mano
+    var sal=parseFloat(v.total||0)-_pagadoDe(v.id);
+    return sal>0.01;
+  }).map(function(v){
+    var tot=parseFloat(v.total||0), pag=_pagadoDe(v.id);
+    var d=_diasVenc(v.fecha_estimada_pago);
+    var cl=clis.find(function(x){return x.id===v.cliente_id;});
+    var abs=_abonosDe(v.id);
+    return {v:v, id:v.id, tot:tot, pag:pag, sal:tot-pag,
+            dias:d, tramo:_tramoDe(d), vend:v.vendedor||'(sin vendedor)',
+            cli:cl?(cl.nombres||cl.alias||'(sin nombre)'):'(sin cliente)',
+            cliId:v.cliente_id||'', tel:(cl&&cl.telefono)||'',
+            ult:abs.length?abs[abs.length-1].fecha:''};
+  });
+}
+
+function renderCobranzas(){
+  var C=_cartera();
+  var el=document.getElementById('dash-cobranzas');
+
+  // ── Totales por tramo ──
+  var orden=['Por vencer','1-15 días','16-30 días','31-60 días','Más de 60','Sin fecha'];
+  var T={}; orden.forEach(function(k){ T[k]={sal:0,n:0}; });
+  var total=0, vencido=0, porVencer=0;
+  C.forEach(function(x){
+    T[x.tramo].sal+=x.sal; T[x.tramo].n++;
+    total+=x.sal;
+    if(x.dias!==null&&x.dias>0) vencido+=x.sal; else porVencer+=x.sal;
+  });
+
+  var h='<div style="background:linear-gradient(135deg,#0ea5e9,#0284c7);border-radius:16px;padding:16px;margin-bottom:12px;color:#fff;">'
+    +'<div style="font-size:.7rem;font-weight:800;letter-spacing:.06em;opacity:.85;margin-bottom:10px;">CUENTAS POR COBRAR</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">'
+    +'<div style="background:rgba(255,255,255,.16);border-radius:11px;padding:10px;">'
+      +'<div style="font-size:1.05rem;font-weight:900;">S/ '+_f2(total)+'</div>'
+      +'<div style="font-size:.63rem;opacity:.85;">Total por cobrar</div></div>'
+    +'<div style="background:rgba(255,255,255,.16);border-radius:11px;padding:10px;">'
+      +'<div style="font-size:1.05rem;font-weight:900;">S/ '+_f2(vencido)+'</div>'
+      +'<div style="font-size:.63rem;opacity:.85;">Vencido</div></div>'
+    +'<div style="background:rgba(255,255,255,.16);border-radius:11px;padding:10px;">'
+      +'<div style="font-size:1.05rem;font-weight:900;">S/ '+_f2(porVencer)+'</div>'
+      +'<div style="font-size:.63rem;opacity:.85;">Por vencer</div></div>'
+    +'</div>'
+    +'<div style="font-size:.64rem;opacity:.8;margin-top:9px;">'+C.length+' ventas con saldo · no incluye las cerradas a mano</div>'
+    +'</div>';
+
+  // ── Tramos, clickeables ──
+  h+='<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;">';
+  h+='<div onclick="cobFiltraTramo(\'\')" style="cursor:pointer;flex-shrink:0;padding:8px 12px;border-radius:10px;border:1.5px solid '
+    +(cobTramo===''?'var(--p)':'var(--bdr)')+';background:'+(cobTramo===''?'var(--p)':'var(--card)')
+    +';color:'+(cobTramo===''?'#fff':'var(--mu)')+';font-size:.72rem;font-weight:800;white-space:nowrap;">Todos</div>';
+  orden.forEach(function(k){
+    if(!T[k].n) return;
+    var c=COB_COLOR[k], act=cobTramo===k;
+    h+='<div onclick="cobFiltraTramo(\''+k+'\')" style="cursor:pointer;flex-shrink:0;padding:8px 12px;border-radius:10px;border:1.5px solid '
+      +(act?c.tx:c.bd)+';background:'+(act?c.tx:c.bg)+';color:'+(act?'#fff':c.tx)
+      +';font-size:.72rem;font-weight:800;white-space:nowrap;">'+k
+      +' <span style="opacity:.8;">S/ '+_f2(T[k].sal)+'</span></div>';
+  });
+  h+='</div>';
+
+  // ── Filtros ──
+  var vends=[]; C.forEach(function(x){ if(vends.indexOf(x.vend)<0) vends.push(x.vend); });
+  h+='<div style="display:flex;gap:6px;margin-bottom:10px;">'
+    +'<input type="text" id="cob-q" value="'+cobQ.replace(/"/g,'&quot;')+'" oninput="cobBuscar(this.value)" placeholder="Buscar cliente" style="flex:1;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.8rem;outline:none;">'
+    +'<select onchange="cobFiltraVend(this.value)" style="padding:9px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.78rem;background:var(--card);">'
+    +'<option value="">Todos</option>'
+    +vends.sort().map(function(v){ return '<option value="'+v+'"'+(cobVend===v?' selected':'')+'>'+v+'</option>'; }).join('')
+    +'</select></div>';
+
+  // ── Cambio de vista ──
+  h+='<div style="display:flex;gap:6px;margin-bottom:10px;">'
+    +['cliente','venta'].map(function(k){
+      var act=cobVista===k;
+      return '<div onclick="cobCambiaVista(\''+k+'\')" style="cursor:pointer;flex:1;text-align:center;padding:9px;border-radius:10px;border:1.5px solid '
+        +(act?'var(--p)':'var(--bdr)')+';background:'+(act?'var(--p)':'var(--card)')+';color:'+(act?'#fff':'var(--mu)')
+        +';font-size:.76rem;font-weight:800;">'+(k==='cliente'?'Por cliente':'Por venta')+'</div>';
+    }).join('')
+    +'<div onclick="exportarCobranzas()" style="cursor:pointer;padding:9px 13px;border-radius:10px;background:#15803d;color:#fff;font-size:.76rem;font-weight:800;white-space:nowrap;">📊 Excel</div>'
+    +'</div>';
+
+  // ── Filtrado ──
+  var q=cobQ.toLowerCase().trim();
+  var F=C.filter(function(x){
+    if(cobTramo&&x.tramo!==cobTramo) return false;
+    if(cobVend&&x.vend!==cobVend) return false;
+    if(q&&(x.cli+' '+x.id).toLowerCase().indexOf(q)<0) return false;
+    return true;
+  });
+  if(!F.length){
+    el.innerHTML=h+'<div class="empty"><p>No hay nada por cobrar con ese filtro.</p></div>';
+    return;
+  }
+
+  if(cobVista==='cliente'){
+    // Agrupado por cliente: asi se sale a cobrar
+    var G={};
+    F.forEach(function(x){
+      var k=x.cliId||x.cli;
+      if(!G[k]) G[k]={cli:x.cli,tel:x.tel,sal:0,n:0,peor:-99999,items:[]};
+      G[k].sal+=x.sal; G[k].n++; G[k].items.push(x);
+      if(x.dias!==null&&x.dias>G[k].peor) G[k].peor=x.dias;
+    });
+    var arr=Object.keys(G).map(function(k){return G[k];})
+      .sort(function(a,b){ return b.peor-a.peor||b.sal-a.sal; });
+    h+=arr.map(function(g){
+      var tr=_tramoDe(g.peor<=-99999?null:g.peor), c=COB_COLOR[tr];
+      return '<div class="card" style="padding:0;overflow:hidden;margin-bottom:9px;border-left:4px solid '+c.tx+';">'
+        +'<div style="padding:12px 14px;">'
+        +'<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">'
+        +'<div style="flex:1;min-width:0;">'
+          +'<div style="font-size:.88rem;font-weight:900;color:var(--tx);">'+g.cli+'</div>'
+          +'<div style="font-size:.68rem;color:var(--mu);margin-top:2px;">'+g.n+' venta'+(g.n===1?'':'s')
+          +(g.tel?' · '+g.tel:'')+'</div>'
+        +'</div>'
+        +'<div style="text-align:right;">'
+          +'<div style="font-size:1rem;font-weight:900;color:'+c.tx+';">S/ '+_f2(g.sal)+'</div>'
+          +'<div style="font-size:.63rem;font-weight:800;color:'+c.tx+';">'+tr+'</div>'
+        +'</div></div>'
+        +'<div style="margin-top:9px;border-top:1px solid var(--bdr);padding-top:7px;">'
+        +g.items.sort(function(a,b){return (b.dias===null?-9999:b.dias)-(a.dias===null?-9999:a.dias);})
+          .map(function(x){
+          var cc=COB_COLOR[x.tramo];
+          return '<div onclick="abrirE(\''+x.id+'\')" style="cursor:pointer;display:flex;justify-content:space-between;gap:8px;padding:5px 0;">'
+            +'<span style="font-size:.7rem;color:var(--mu);">'+(x.v.fecha||'')
+            +(fOk(x.v.fecha_estimada_pago)?' · vence '+x.v.fecha_estimada_pago:' · sin fecha de pago')
+            +'</span>'
+            +'<span style="font-size:.7rem;font-weight:800;color:'+cc.tx+';white-space:nowrap;">S/ '+_f2(x.sal)
+            +(x.dias!==null&&x.dias>0?' · '+x.dias+'d':'')+' ›</span></div>';
+        }).join('')
+        +'</div></div></div>';
+    }).join('');
+  } else {
+    // Por venta, la mas vencida primero
+    h+=F.sort(function(a,b){ return (b.dias===null?-9999:b.dias)-(a.dias===null?-9999:a.dias); })
+      .map(function(x){
+      var c=COB_COLOR[x.tramo];
+      return '<div class="card" onclick="abrirE(\''+x.id+'\')" style="cursor:pointer;padding:12px 14px;margin-bottom:8px;border-left:4px solid '+c.tx+';">'
+        +'<div style="display:flex;justify-content:space-between;gap:10px;">'
+        +'<div style="flex:1;min-width:0;">'
+          +'<div style="font-size:.84rem;font-weight:800;color:var(--tx);">'+x.cli+'</div>'
+          +'<div style="font-size:.67rem;color:var(--mu);margin-top:2px;">'+(x.v.fecha||'')+' · '+x.vend
+          +(fOk(x.v.fecha_estimada_pago)?' · vence '+x.v.fecha_estimada_pago:'')+'</div>'
+          +'<div style="font-size:.65rem;color:var(--mu);margin-top:2px;">Total S/ '+_f2(x.tot)
+          +' · abonado S/ '+_f2(x.pag)+(x.ult?' · último pago '+x.ult:'')+'</div>'
+        +'</div>'
+        +'<div style="text-align:right;white-space:nowrap;">'
+          +'<div style="font-size:.98rem;font-weight:900;color:'+c.tx+';">S/ '+_f2(x.sal)+'</div>'
+          +'<div style="font-size:.62rem;font-weight:800;color:'+c.tx+';">'+x.tramo
+          +(x.dias!==null&&x.dias>0?' ('+x.dias+'d)':'')+'</div>'
+        +'</div></div></div>';
+    }).join('');
+  }
+  el.innerHTML=h;
+}
+function cobFiltraTramo(t){ cobTramo=t; renderCobranzas(); }
+function cobFiltraVend(v){ cobVend=v; renderCobranzas(); }
+function cobCambiaVista(v){ cobVista=v; renderCobranzas(); }
+function cobBuscar(q){
+  cobQ=q; renderCobranzas();
+  var i=document.getElementById('cob-q');
+  if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); }
+}
+function _f2(x){ return (Math.round((parseFloat(x)||0)*100)/100).toFixed(2); }
+
+async function exportarCobranzas(){
+  var C=_cartera();
+  if(!C.length){ toast('No hay nada por cobrar','err'); return; }
+  _ensureExcelJS(async function(){
+    var det=[['CLIENTE','RUC','TELEFONO','VENDEDOR','ID_VENTA','FECHA_VENTA','COMPROBANTE',
+              'FECHA_ESTIMADA_PAGO','DIAS_VENCIDA','TRAMO','TOTAL','ABONADO','SALDO',
+              'ULTIMO_PAGO','DIAS_SIN_PAGAR','OBSERVACIONES']];
+    C.sort(function(a,b){ return (b.dias===null?-9999:b.dias)-(a.dias===null?-9999:a.dias); })
+     .forEach(function(x){
+      var cl=clis.find(function(y){return y.id===x.cliId;})||{};
+      var sinPagar=x.ult?Math.round((pF(_hoyStr())-pF(x.ult))/86400000):'';
+      det.push([x.cli,cl.dni_ruc||'',x.tel||'',x.vend,x.id,x.v.fecha||'',x.v.comprobante||'',
+        x.v.fecha_estimada_pago||'',x.dias===null?'':x.dias,x.tramo,
+        _r2b(x.tot),_r2b(x.pag),_r2b(x.sal),x.ult||'',sinPagar,x.v.observaciones||'']);
+    });
+    // Por cliente
+    var G={};
+    C.forEach(function(x){
+      var k=x.cliId||x.cli;
+      if(!G[k]) G[k]={cli:x.cli,ruc:'',tel:x.tel,n:0,sal:0,peor:-99999,vend:x.vend};
+      var cl=clis.find(function(y){return y.id===x.cliId;})||{};
+      G[k].ruc=cl.dni_ruc||'';
+      G[k].n++; G[k].sal+=x.sal;
+      if(x.dias!==null&&x.dias>G[k].peor) G[k].peor=x.dias;
+    });
+    var pc=[['CLIENTE','RUC','TELEFONO','VENDEDOR','VENTAS_ABIERTAS','SALDO','DIAS_MAS_VENCIDO','TRAMO']];
+    Object.keys(G).map(function(k){return G[k];})
+      .sort(function(a,b){ return b.sal-a.sal; })
+      .forEach(function(g){
+        pc.push([g.cli,g.ruc,g.tel,g.vend,g.n,_r2b(g.sal),
+          g.peor<=-99999?'':g.peor,_tramoDe(g.peor<=-99999?null:g.peor)]);
+      });
+    // Por tramo y por vendedor
+    var TT={},TV={};
+    C.forEach(function(x){
+      TT[x.tramo]=(TT[x.tramo]||0)+x.sal;
+      if(!TV[x.vend]) TV[x.vend]={n:0,sal:0,venc:0};
+      TV[x.vend].n++; TV[x.vend].sal+=x.sal;
+      if(x.dias!==null&&x.dias>0) TV[x.vend].venc+=x.sal;
+    });
+    var rt=[['TRAMO','SALDO S/']];
+    ['Por vencer','1-15 días','16-30 días','31-60 días','Más de 60','Sin fecha'].forEach(function(k){
+      if(TT[k]) rt.push([k,_r2b(TT[k])]);
+    });
+    rt.push(['TOTAL',_r2b(C.reduce(function(s,x){return s+x.sal;},0))]);
+    var rv=[['VENDEDOR','VENTAS_ABIERTAS','SALDO','DE ESO VENCIDO']];
+    Object.keys(TV).sort().forEach(function(k){
+      rv.push([k,TV[k].n,_r2b(TV[k].sal),_r2b(TV[k].venc)]);
+    });
+
+    var iTr=det[0].indexOf('TRAMO');
+    function colorCob(f){
+      if(f[iTr]==='Más de 60'||f[iTr]==='31-60 días') return 'MC_NEGATIVO';
+      if(f[iTr]==='16-30 días') return 'MC_BAJO';
+      if(f[iTr]==='Por vencer') return 'PARCIAL';
+      return null;
+    }
+    await _escribirLibroExcel([
+      {nombre:'Por tramo',   aoa:rt, anchos:[18,14]},
+      {nombre:'Por vendedor',aoa:rv, anchos:[18,17,14,16]},
+      {nombre:'Por cliente', aoa:pc, anchos:[34,14,15,12,17,13,18,14]},
+      {nombre:'Detalle',     aoa:det,anchos:[34,14,15,12,13,13,13,20,14,13,12,12,12,13,16,36], color:colorCob}
+    ],'Cuentas_por_cobrar_'+_hoyStr()+'.xlsx');
+    toast('✓ Excel de cobranzas descargado','ok');
+  });
+}
+function _r2b(x){ return Math.round((parseFloat(x)||0)*100)/100; }
 
 // ════════════════════════════════════════════════════════════
 //  UTILIDAD (ESTADO DE RESULTADOS) + GASTOS
@@ -4522,7 +4801,7 @@ var TOL_PAGO=0.50;
 // Se muestra en la pantalla de ingreso y en Inicio. Sirve para
 // saber de un vistazo si el navegador esta usando la ultima
 // subida o una copia vieja guardada en cache.
-var APP_VER='2026-11-06d';
+var APP_VER='2026-11-08';
 function pintarVersion(){
   ['appVer','appVerInicio'].forEach(function(id){
     var el=document.getElementById(id);
@@ -5027,7 +5306,6 @@ function _armarExcelComisiones(allDets){
   var hoyStr=hoy();
   var periodo=comFiltroMes==='todos'?'Todo el historico':comFiltroMes;
   function mesDe(f){ var d=pF(f||''); return isNaN(d)?'':d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
-  function fOk(f){ return f&&String(f)>='2020-01-01'&&String(f)<='2099-12-31'; }
   function dias(a,b){ if(!fOk(a)||!fOk(b)) return ''; return Math.round((pF(b)-pF(a))/86400000); }
   function _r2(x){ return Math.round((parseFloat(x)||0)*100)/100; }
   function pct(a,b){ return b?_r2(a/b*100):0; }
