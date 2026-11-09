@@ -2492,6 +2492,24 @@ async function abrirE(vid){
       }).join('');
     }
     pEl.innerHTML+=`<button onclick="abrirAddDet()" style="width:100%;margin-top:8px;padding:10px;background:#fff;color:var(--p);border:1.5px dashed var(--p);border-radius:10px;font-family:inherit;font-size:.78rem;font-weight:800;cursor:pointer;">➕ Agregar producto a esta venta</button>`;
+
+    // ── El total de la venta no coincide con sus productos ──
+    // Pasa con las ventas corregidas antes de que el recalculo
+    // existiera: se editaban los items y el total quedaba viejo.
+    const _sd=det.reduce((s,d)=>s+parseFloat(d.total||0),0);
+    const _tv=parseFloat((ventas.find(x=>x.id===vid)||{}).total||0);
+    if(det.length&&Math.abs(_sd-_tv)>0.05){
+      pEl.innerHTML=`<div style="padding:12px 14px;background:#fef2f2;border:1.5px solid #fca5a5;border-radius:12px;margin-bottom:10px;">
+        <div style="font-size:.78rem;font-weight:900;color:#b91c1c;margin-bottom:5px;">⚠️ El total no coincide con los productos</div>
+        <div style="font-size:.72rem;color:#7f1d1d;line-height:1.5;">
+          Total guardado: <b>S/ ${_tv.toFixed(2)}</b><br>
+          Suma de los productos: <b>S/ ${_sd.toFixed(2)}</b><br>
+          Diferencia: <b>S/ ${(_tv-_sd).toFixed(2)}</b>
+        </div>
+        ${sesion.rol==='gerente'?`<button onclick="corregirTotalVenta('${vid}')" style="width:100%;margin-top:9px;padding:9px;background:#b91c1c;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:.76rem;font-weight:800;cursor:pointer;">Corregir el total a S/ ${_sd.toFixed(2)}</button>`
+        :`<div style="font-size:.68rem;color:#7f1d1d;margin-top:7px;">El gerente tiene que corregirlo.</div>`}
+      </div>`+pEl.innerHTML;
+    }
   }catch(e){pEl.innerHTML='<p style="font-size:.75rem;color:var(--d)">Error cargando productos</p>';}
 
   // Documento
@@ -4801,7 +4819,7 @@ var TOL_PAGO=0.50;
 // Se muestra en la pantalla de ingreso y en Inicio. Sirve para
 // saber de un vistazo si el navegador esta usando la ultima
 // subida o una copia vieja guardada en cache.
-var APP_VER='2026-11-08';
+var APP_VER='2026-11-08b';
 function pintarVersion(){
   ['appVer','appVerInicio'].forEach(function(id){
     var el=document.getElementById(id);
@@ -9903,6 +9921,18 @@ async function saveDetalle(){
     document.getElementById('MEDET').classList.remove('open');
     abrirE(vid);
   }catch(e){toast('Error: '+e.message,'err');}
+}
+
+// Corregir el total de una venta para que cuadre con sus productos
+async function corregirTotalVenta(vid){
+  if(sesion.rol!=='gerente'){ toast('Solo el gerente puede corregir totales','err'); return; }
+  try{
+    var antes=parseFloat((ventas.find(function(x){return x.id===vid;})||{}).total||0);
+    var nt=await _recalcTotalVenta(vid);
+    toast('✓ Total corregido: S/ '+antes.toFixed(2)+' → S/ '+nt.toFixed(2),'ok');
+    abrirE(vid);
+    if(typeof renderV==='function') renderV();
+  }catch(e){ toast('Error: '+e.message,'err'); }
 }
 
 // ── Quitar un producto de la venta ──
