@@ -589,10 +589,13 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     </div></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
       <span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Clientes</span>
+      <div style="display:flex;gap:6px;">
+      <button onclick="exportarClientes()" style="display:flex;align-items:center;gap:5px;padding:6px 12px;background:#15803d;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.78rem;font-weight:800;cursor:pointer;">📊 Excel</button>
       <button onclick="abrirMC()" style="display:flex;align-items:center;gap:5px;padding:6px 12px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.78rem;font-weight:800;cursor:pointer;">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Nuevo cliente
       </button>
+      </div>
     </div>
     <div id="CL"></div>
   </div>
@@ -1314,6 +1317,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="fg"><label>Código / SKU (opcional)</label>
       <input type="text" id="mp2-codigo" class="minp" style="width:100%" placeholder="Ej: MP001"></div>
     <div class="fg"><label>Proveedor principal</label>
+      <input type="text" id="mp2-prov-busq" oninput="filtrarSelectProv('mp2-proveedor','mp2-prov-busq')" placeholder="🔍 Escribí una letra para filtrar" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.85rem;outline:none;box-sizing:border-box;margin-bottom:6px;">
       <select id="mp2-proveedor" class="msel">
         <option value="">-- Sin proveedor --</option>
       </select>
@@ -1568,6 +1572,11 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     </div>
 
     <div class="sdiv">Datos generales</div>
+    <div class="fg" id="fg-e-cli"><label>Cliente</label>
+      <input type="text" id="e-cli-busq" oninput="filtrarSelectCliente()" placeholder="🔍 Escribí para buscar otro cliente" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.85rem;outline:none;box-sizing:border-box;margin-bottom:6px;">
+      <select class="msel" id="e-cli"></select>
+      <div style="font-size:.7rem;color:var(--mu);margin-top:4px;">Al cambiarlo se regenera la nota de venta con los datos del cliente nuevo.</div>
+    </div>
     <div class="fg" id="fg-e-vend"><label>Vendedor</label>
       <select class="msel" id="e-vend"></select>
       <div style="font-size:.7rem;color:var(--mu);margin-top:4px;">Al cambiarlo se recalculan las comisiones y se regenera la nota de venta.</div>
@@ -2426,6 +2435,13 @@ async function abrirE(vid){
   document.getElementById('e-fentrega').value=v.fecha_entrega||'';
   document.getElementById('e-fentregareal').value=v.fecha_entrega_real||'';
   document.getElementById('e-desp').value=v.estado_despacho||'PENDIENTE';
+  // Cliente: se puede corregir si se eligió mal al tomar el pedido
+  var _bc=document.getElementById('e-cli-busq'); if(_bc) _bc.value='';
+  poblarSelectCliente(v.cliente_id||'');
+  var _sc=document.getElementById('e-cli');
+  _sc.disabled=(sesion.rol!=='gerente');
+  document.getElementById('fg-e-cli').style.opacity=(sesion.rol==='gerente')?'1':'.6';
+
   var _sv=document.getElementById('e-vend');
   if(v.vendedor&&!Array.prototype.some.call(_sv.options,function(o){return o.value===v.vendedor;}))
     _sv.insertAdjacentHTML('beforeend','<option value="'+v.vendedor+'">'+v.vendedor+'</option>');
@@ -2720,6 +2736,13 @@ async function saveEdit(){
     const cambioVend=vendNuevo&&vendNuevo!==vendPrevio;
     if(cambioVend) upd.vendedor=vendNuevo;
 
+    // ── Cambio de cliente: se corrige si se eligió mal al tomar el pedido ──
+    const _cSel=document.getElementById('e-cli');
+    const cliNuevo=_cSel&&!_cSel.disabled?_cSel.value:null;
+    const cliPrevio=ventaPrev.cliente_id||'';
+    const cambioCli=cliNuevo!==null&&cliNuevo!==cliPrevio;
+    if(cambioCli) upd.cliente_id=cliNuevo||null;
+
     await sbUpd('ventas',editId,upd);
 
     if(cambioVend){
@@ -2737,6 +2760,16 @@ async function saveEdit(){
         await regenerarNota(editId,vendNuevo);
         toast('✓ Vendedor cambiado a '+vendNuevo+' · comisiones y nota actualizadas','ok');
       }catch(e){ console.error('Recalculo vendedor:',e); toast('⚠️ Vendedor cambiado, pero la nota no se pudo regenerar','err'); }
+    }
+
+    // La nota lleva los datos del cliente, así que hay que rehacerla
+    if(cambioCli){
+      var _cn=clis.find(function(x){return x.id===cliNuevo;});
+      try{
+        if(!cambioVend) await regenerarNota(editId,upd.vendedor||ventaPrev.vendedor||'');
+        toast('✓ Cliente cambiado a '+((_cn&&(_cn.nombres||_cn.alias))||'sin cliente')+' · nota actualizada','ok');
+      }catch(e){ console.error('Regenerar nota por cambio de cliente:',e);
+        toast('⚠️ Cliente cambiado, pero la nota no se pudo regenerar','err'); }
     }
 
     // Descontar stock cuando el despacho pasa a ENTREGADO
@@ -2875,6 +2908,93 @@ function renderC(list){
   }).join('');
 }
 function filterC(){const q=document.getElementById('sc2').value.toLowerCase();renderC(q?clis.filter(c=>(c.nombres||'').toLowerCase().includes(q)||(c.alias||'').toLowerCase().includes(q)||(c.dni_ruc||'').includes(q)):clis);}
+
+// ── Excel de clientes ──
+// Tres hojas: los datos de contacto, lo que compró cada uno, y las
+// ventas sueltas por si hay que cruzarlas con otra cosa.
+async function exportarClientes(){
+  if(!clis.length){ toast('No hay clientes','err'); return; }
+  toast('Generando Excel...','ok');
+  _ensureExcelJS(async function(){
+    var hoyStr=hoy();
+    function r2(x){ return Math.round((parseFloat(x)||0)*100)/100; }
+    function dd(a,b){ if(!fOk(a)||!fOk(b)) return ''; return Math.round((pF(b)-pF(a))/86400000); }
+
+    // Resumen de compras por cliente
+    var R={};
+    ventas.forEach(function(v){
+      if(v.estado==='ANULADO') return;
+      var k=v.cliente_id||'_sin_';
+      if(!R[k]) R[k]={n:0,fact:0,pag:0,pri:'',ult:'',vends:{}};
+      var e=R[k], tot=parseFloat(v.total||0);
+      e.n++; e.fact+=tot; e.pag+=Math.min(_pagadoDe(v.id),tot);
+      if(fOk(v.fecha)){
+        if(!e.pri||v.fecha<e.pri) e.pri=v.fecha;
+        if(!e.ult||v.fecha>e.ult) e.ult=v.fecha;
+      }
+      if(v.vendedor) e.vends[v.vendedor]=(e.vends[v.vendedor]||0)+tot;
+    });
+
+    var L=[['NOMBRE','ALIAS','RUC_DNI','TELEFONO','CORREO','DIRECCION','UBICACION',
+            'COMPRAS','FACTURADO','COBRADO','POR_COBRAR','TICKET_PROMEDIO',
+            'PRIMERA_COMPRA','ULTIMA_COMPRA','DIAS_SIN_COMPRAR','VENDEDOR_HABITUAL','ID']];
+    clis.slice().sort(function(a,b){
+      return (a.nombres||a.alias||'').localeCompare(b.nombres||b.alias||'');
+    }).forEach(function(c){
+      var e=R[c.id]||{n:0,fact:0,pag:0,pri:'',ult:'',vends:{}};
+      var vh='', mx=0;
+      Object.keys(e.vends).forEach(function(k){ if(e.vends[k]>mx){ mx=e.vends[k]; vh=k; } });
+      L.push([c.nombres||'',c.alias||'',c.dni_ruc||'',c.telefono||'',c.correo||'',
+        c.direccion||'',c.ubicacion||'',
+        e.n,r2(e.fact),r2(e.pag),r2(e.fact-e.pag),e.n?r2(e.fact/e.n):0,
+        e.pri||'',e.ult||'',e.ult?dd(e.ult,hoyStr):'',vh,c.id]);
+    });
+
+    // Qué compró cada cliente
+    var allDets=await sbGet('detalle_ventas','');
+    var P={};
+    allDets.forEach(function(d){
+      var v=ventas.find(function(x){return x.id===d.venta_id;});
+      if(!v||v.estado==='ANULADO') return;
+      var pr=prods.find(function(x){return x.id===d.producto_id;})||{};
+      var k=(v.cliente_id||'_sin_')+'||'+(pr.nombre||d.producto_id);
+      if(!P[k]) P[k]={cli:v.cliente_id||'',prod:pr.nombre||d.producto_id,
+                      cat:pr.categoria||'',q:0,imp:0,ult:''};
+      P[k].q+=parseFloat(d.cantidad||0);
+      P[k].imp+=parseFloat(d.total||0);
+      if(fOk(v.fecha)&&(!P[k].ult||v.fecha>P[k].ult)) P[k].ult=v.fecha;
+    });
+    var PC=[['CLIENTE','RUC_DNI','PRODUCTO','CATEGORIA','CANTIDAD','IMPORTE','ULTIMA_VEZ']];
+    Object.keys(P).map(function(k){return P[k];})
+      .sort(function(a,b){ return b.imp-a.imp; })
+      .forEach(function(x){
+        var c=clis.find(function(y){return y.id===x.cli;})||{};
+        PC.push([c.nombres||c.alias||'(sin cliente)',c.dni_ruc||'',
+          x.prod,x.cat,r2(x.q),r2(x.imp),x.ult]);
+      });
+
+    // Una fila por venta
+    var VT=[['CLIENTE','RUC_DNI','ID_VENTA','FECHA','VENDEDOR','COMPROBANTE','ESTADO',
+             'TOTAL','ABONADO','SALDO','ESTADO_PAGO','FECHA_ESTIMADA_PAGO','FECHA_PAGO_REAL']];
+    ventas.slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); })
+      .forEach(function(v){
+        if(v.estado==='ANULADO') return;
+        var c=clis.find(function(y){return y.id===v.cliente_id;})||{};
+        var tot=parseFloat(v.total||0), pg=_pagadoDe(v.id);
+        VT.push([c.nombres||c.alias||'(sin cliente)',c.dni_ruc||'',v.id,v.fecha||'',
+          v.vendedor||'',v.comprobante||'',v.estado||'',
+          r2(tot),r2(pg),r2(tot-pg),estadoPago(v).toUpperCase(),
+          v.fecha_estimada_pago||'',fechaPagoReal(v)]);
+      });
+
+    await _escribirLibroExcel([
+      {nombre:'Clientes',  aoa:L,  anchos:[34,20,14,15,26,34,30,10,13,13,13,16,15,15,17,19,14]},
+      {nombre:'Qué compró',aoa:PC, anchos:[34,14,40,14,11,13,13]},
+      {nombre:'Ventas',    aoa:VT, anchos:[34,14,13,12,11,13,13,12,12,12,14,20,16]}
+    ],'Clientes_'+hoyStr+'.xlsx');
+    toast('✓ Excel de clientes descargado','ok');
+  });
+}
 
 // ── TOAST ─────────────────────────────────────────────────
 function toast(msg,type){const t=document.getElementById('T');t.textContent=msg;t.className='toast show'+(type?' '+type:'');setTimeout(()=>t.className='toast',2800);}
@@ -4819,7 +4939,7 @@ var TOL_PAGO=0.50;
 // Se muestra en la pantalla de ingreso y en Inicio. Sirve para
 // saber de un vistazo si el navegador esta usando la ultima
 // subida o una copia vieja guardada en cache.
-var APP_VER='2026-11-08b';
+var APP_VER='2026-11-20';
 function pintarVersion(){
   ['appVer','appVerInicio'].forEach(function(id){
     var el=document.getElementById(id);
@@ -6722,6 +6842,7 @@ function abrirNuevaMP(){
   ['mp2-nombre','mp2-stock','mp2-minimo','mp2-costo','mp2-codigo','mp2-entrega'].forEach(id=>{var e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('mp2-unidad').value='UND';
   document.getElementById('mp2-tipo').value='Insumo';
+  var _bq=document.getElementById('mp2-prov-busq'); if(_bq) _bq.value='';
   poblarSelectProveedores('mp2-proveedor','');
   window._newMPPhoto=null;
   document.getElementById('mp-foto-prev').style.display='none';
@@ -6742,6 +6863,7 @@ function editMP(id){
   document.getElementById('mp2-costo').value=m.costo_unitario||0;
   document.getElementById('mp2-codigo').value=m.codigo||'';
   document.getElementById('mp2-entrega').value=m.tiempo_entrega||'';
+  var _bq=document.getElementById('mp2-prov-busq'); if(_bq) _bq.value='';
   poblarSelectProveedores('mp2-proveedor',m.proveedor_id||'');
   window._newMPPhoto=null;
   const mpPrev=document.getElementById('mp-foto-prev');
@@ -10265,6 +10387,65 @@ function poblarSelectProveedores(selectId, valorActual){
     }).join('');
 }
 
+// ── Selector de cliente del modal de venta ──
+// Con casi 400 clientes, el desplegable solo es usable con filtro.
+function poblarSelectCliente(valorActual){
+  var sel=document.getElementById('e-cli'); if(!sel) return;
+  var q=((document.getElementById('e-cli-busq')||{}).value||'').toLowerCase().trim();
+  var toks=q.split(/\s+/).filter(Boolean);
+  var arr=(clis||[]).filter(function(c){
+    if(c.id===valorActual) return true;             // el actual siempre visible
+    if(!toks.length) return true;
+    var t=((c.nombres||'')+' '+(c.alias||'')+' '+(c.dni_ruc||'')+' '+(c.telefono||'')).toLowerCase();
+    return toks.every(function(k){ return t.indexOf(k)>=0; });
+  }).sort(function(a,b){
+    return (a.nombres||a.alias||'').localeCompare(b.nombres||b.alias||'');
+  }).slice(0,300);
+  sel.innerHTML='<option value="">— Sin cliente —</option>'+
+    arr.map(function(c){
+      var n=(c.nombres||c.alias||'(sin nombre)')+(c.dni_ruc?'  ·  '+c.dni_ruc:'');
+      return '<option value="'+c.id+'"'+(c.id===valorActual?' selected':'')+'>'+n+'</option>';
+    }).join('');
+  sel.value=valorActual||'';
+}
+function filtrarSelectCliente(){
+  var sel=document.getElementById('e-cli');
+  poblarSelectCliente(sel?sel.value:'');
+}
+
+// ── Filtrar un selector de proveedores escribiendo ──
+// Con 40 proveedores, leer la lista entera no es practico. El
+// seleccionado nunca se oculta, para no perderlo al filtrar.
+function filtrarSelectProv(idSelect,idBusq){
+  var sel=document.getElementById(idSelect);
+  var q=((document.getElementById(idBusq)||{}).value||'').toLowerCase().trim();
+  if(!sel) return;
+  var actual=sel.value;
+  var toks=q.split(/\s+/).filter(Boolean);
+  var arr=(proveedores||[]).filter(function(p){
+    if(p.id===actual) return true;
+    if(!toks.length) return true;
+    var t=((p.nombre||'')+' '+(p.ruc||'')+' '+(p.contacto||'')).toLowerCase();
+    return toks.every(function(k){ return t.indexOf(k)>=0; });
+  }).sort(function(a,b){ return (a.nombre||'').localeCompare(b.nombre||''); });
+  sel.innerHTML='<option value="">-- Sin proveedor --</option>'+
+    arr.map(function(p){
+      return'<option value="'+p.id+'"'+(p.id===actual?' selected':'')+'>'+p.nombre+'</option>';
+    }).join('');
+  // Si el filtro deja uno solo, se elige solo
+  if(toks.length&&arr.length===1&&!actual) sel.value=arr[0].id;
+  else sel.value=actual;
+}
+
+// Devuelve el foco al buscador y deja el cursor al final, porque el
+// listado se vuelve a dibujar entero con cada tecla.
+function _focoBusq(id){
+  var i=document.getElementById(id);
+  if(!i) return;
+  i.focus();
+  try{ i.setSelectionRange(i.value.length,i.value.length); }catch(e){}
+}
+
 function renderProveedores(){
   const el=document.getElementById('stock-proveedores');
   if(!el) return;
@@ -10274,7 +10455,9 @@ function renderProveedores(){
   html+='<span style="font-size:.72rem;font-weight:800;color:var(--mu);text-transform:uppercase;">Proveedores ('+filtradosPV.length+')</span>';
   html+='<button onclick="abrirNuevoProv()" style="display:flex;align-items:center;gap:5px;padding:6px 12px;background:var(--p);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:.75rem;font-weight:800;cursor:pointer;">+ Nuevo</button>';
   html+='</div>';
-  html+='<input type="text" id="busq-stock-pv" placeholder="🔍 Buscar proveedor..." oninput="renderProveedores()" style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">';
+  // El value va escrito: sin esto, cada tecla volvia a dibujar el campo
+  // vacio y se perdia lo escrito junto con el foco.
+  html+='<input type="text" id="busq-stock-pv" value="'+qpv.replace(/"/g,'&quot;')+'" placeholder="🔍 Buscar por nombre, RUC o contacto" oninput="renderProveedores()" style="width:100%;padding:9px 14px;border:1.5px solid var(--bdr);border-radius:12px;font-family:inherit;font-size:.88rem;margin-bottom:10px;outline:none;box-sizing:border-box;">';
 
   if(!filtradosPV.length){
     el.innerHTML=html+'<div class="empty"><p>No hay proveedores registrados.<br>Agrega tus proveedores de materias primas.</p></div>';
@@ -10344,6 +10527,7 @@ function renderProveedores(){
   }
 
   el.innerHTML=html;
+  _focoBusq('busq-stock-pv');
 }
 
 
@@ -10451,7 +10635,8 @@ async function saveProveedor(){
       proveedores.push(data);
       proveedores.sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
     }
-    poblarSelectProveedores('mp2-proveedor','');
+    var _bq=document.getElementById('mp2-prov-busq'); if(_bq) _bq.value='';
+  poblarSelectProveedores('mp2-proveedor','');
     renderProveedores();
     toast('✓ Proveedor guardado','ok');
     document.getElementById('MPROV').classList.remove('open');
