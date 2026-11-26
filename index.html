@@ -1574,7 +1574,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);heigh
     <div class="sdiv">Datos generales</div>
     <div class="fg" id="fg-e-cli"><label>Cliente</label>
       <input type="text" id="e-cli-busq" oninput="filtrarSelectCliente()" placeholder="🔍 Escribí para buscar otro cliente" style="width:100%;padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-family:inherit;font-size:.85rem;outline:none;box-sizing:border-box;margin-bottom:6px;">
-      <select class="msel" id="e-cli"></select>
+      <select class="msel" id="e-cli" onchange="_cliTocado=true"></select>
       <div style="font-size:.7rem;color:var(--mu);margin-top:4px;">Al cambiarlo se regenera la nota de venta con los datos del cliente nuevo.</div>
     </div>
     <div class="fg" id="fg-e-vend"><label>Vendedor</label>
@@ -2407,7 +2407,7 @@ function renderV(list){
   el.innerHTML=html;
 }
 function tog(id){const b=document.getElementById('body-'+id);const c=document.getElementById('chev-'+id);if(b){b.classList.toggle('open');if(c)c.classList.toggle('open');}}
-function filterV(){const q=document.getElementById('sv').value.toLowerCase();if(!q){renderV(ventas);return;}renderV(ventas.filter(v=>{const c=clis.find(x=>x.id===v.cliente_id);const n=c?(c.nombres||c.alias||''):'';return n.toLowerCase().includes(q)||(v.vendedor||'').toLowerCase().includes(q)||(v.estado||'').toLowerCase().includes(q);}));}
+function filterV(){const q=document.getElementById('sv').value.toLowerCase();if(!q){renderV(ventas);return;}renderV(ventas.filter(v=>{const c=clis.find(x=>x.id===v.cliente_id);const n=c?(c.nombres||c.alias||''):'sin nombre sin cliente';return n.toLowerCase().includes(q)||(v.vendedor||'').toLowerCase().includes(q)||(v.estado||'').toLowerCase().includes(q)||String(v.id).toLowerCase().includes(q);}));}
 
 // ── EDITAR VENTA ──────────────────────────────────────────
 async function abrirE(vid){
@@ -2437,6 +2437,7 @@ async function abrirE(vid){
   document.getElementById('e-desp').value=v.estado_despacho||'PENDIENTE';
   // Cliente: se puede corregir si se eligió mal al tomar el pedido
   var _bc=document.getElementById('e-cli-busq'); if(_bc) _bc.value='';
+  _cliTocado=false;
   poblarSelectCliente(v.cliente_id||'');
   var _sc=document.getElementById('e-cli');
   _sc.disabled=(sesion.rol!=='gerente');
@@ -2740,7 +2741,11 @@ async function saveEdit(){
     const _cSel=document.getElementById('e-cli');
     const cliNuevo=_cSel&&!_cSel.disabled?_cSel.value:null;
     const cliPrevio=ventaPrev.cliente_id||'';
-    const cambioCli=cliNuevo!==null&&cliNuevo!==cliPrevio;
+    let cambioCli=_cliTocado&&cliNuevo!==null&&cliNuevo!==cliPrevio;
+    if(cambioCli&&!cliNuevo&&cliPrevio){
+      // Quitarle el cliente a una venta casi nunca es lo que se quiere
+      cambioCli=confirm('Vas a dejar esta venta SIN cliente.\n\n¿Seguro? Si no fue a propósito, tocá Cancelar y la venta conserva su cliente.');
+    }
     if(cambioCli) upd.cliente_id=cliNuevo||null;
 
     await sbUpd('ventas',editId,upd);
@@ -4939,7 +4944,7 @@ var TOL_PAGO=0.50;
 // Se muestra en la pantalla de ingreso y en Inicio. Sirve para
 // saber de un vistazo si el navegador esta usando la ultima
 // subida o una copia vieja guardada en cache.
-var APP_VER='2026-11-20';
+var APP_VER='2026-11-26';
 function pintarVersion(){
   ['appVer','appVerInicio'].forEach(function(id){
     var el=document.getElementById(id);
@@ -9885,7 +9890,14 @@ function edetFiltrar(forzarId){
     if(!toks.length) return true;
     var t=((p.nombre||'')+' '+(p.codigo||'')+' '+(p.categoria||'')).toLowerCase();
     return toks.every(function(k){ return t.indexOf(k)>=0; });
-  }).sort(function(a,b){ return (a.nombre||'').localeCompare(b.nombre||''); }).slice(0,300);
+  }).sort(function(a,b){ return (a.nombre||'').localeCompare(b.nombre||''); });
+  // Mismo cuidado que con los clientes: el producto actual no puede
+  // quedar fuera del tope, o el selector apuntaria a otro producto.
+  var _todo=arr; arr=_todo.slice(0,300);
+  if(actual&&!arr.some(function(p){return p.id===actual;})){
+    var _pa=_todo.find(function(p){return p.id===actual;});
+    if(_pa) arr.unshift(_pa);
+  }
   sel.innerHTML=arr.map(function(p){
     return '<option value="'+p.id+'"'+(p.id===actual?' selected':'')+'>'
       +(p.nombre||'(sin nombre)')+(parseFloat(p.costo||0)>0?'':'  ⚠ sin costo')+'</option>';
@@ -10387,6 +10399,10 @@ function poblarSelectProveedores(selectId, valorActual){
     }).join('');
 }
 
+// Solo se cambia el cliente de una venta si alguien eligio otro A MANO
+// en el desplegable. Que el selector muestre algo distinto no alcanza.
+var _cliTocado=false;
+
 // ── Selector de cliente del modal de venta ──
 // Con casi 400 clientes, el desplegable solo es usable con filtro.
 function poblarSelectCliente(valorActual){
@@ -10400,9 +10416,17 @@ function poblarSelectCliente(valorActual){
     return toks.every(function(k){ return t.indexOf(k)>=0; });
   }).sort(function(a,b){
     return (a.nombres||a.alias||'').localeCompare(b.nombres||b.alias||'');
-  }).slice(0,300);
+  });
+  // Tope de 300 para que el desplegable no pese, pero el cliente actual
+  // NUNCA puede quedar afuera: si no esta en el desplegable, el selector
+  // cae en "Sin cliente" y la venta se guardaba sin cliente.
+  var tope=arr.slice(0,300);
+  if(valorActual&&!tope.some(function(c){return c.id===valorActual;})){
+    var act=arr.find(function(c){return c.id===valorActual;});
+    tope.unshift(act||{id:valorActual,nombres:'(cliente '+valorActual+' — no esta en la lista)'});
+  }
   sel.innerHTML='<option value="">— Sin cliente —</option>'+
-    arr.map(function(c){
+    tope.map(function(c){
       var n=(c.nombres||c.alias||'(sin nombre)')+(c.dni_ruc?'  ·  '+c.dni_ruc:'');
       return '<option value="'+c.id+'"'+(c.id===valorActual?' selected':'')+'>'+n+'</option>';
     }).join('');
